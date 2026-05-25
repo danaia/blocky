@@ -1,0 +1,32 @@
+[
+  {
+    "id": "streetlamp_001",
+    "category": "street_furniture",
+    "prompt": "single modern city streetlamp on pole, isolated on neutral light gray background, overhead street light fixture, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, background scene, multiple objects, cropped, partial view",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "bench_001",
+    "category": "street_furniture",
+    "prompt": "single wooden park bench with cast iron frame, isolated on neutral light gray background, city park bench, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, scene, multiple objects, cropped",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "fire_hydrant_001",
+    "category": "street_furniture",
+    "prompt": "single red fire hydrant, isolated on neutral light gray background, american style cast iron fire hydrant, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, street scene, multiple objects, curb, road",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  }
+]

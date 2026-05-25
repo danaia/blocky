@@ -48,7 +48,10 @@ COMFYUI_SEED_NODE = "8"       # RandomNoise — noise_seed
 COMFYUI_LATENT_NODE = "5"     # EmptySD3LatentImage — width / height
 COMFYUI_OUTPUT_NODE = "13"    # SaveImage — images list
 
-# Hunyuan3D generation parameters per mesh_quality
+# Hunyuan3D generation parameters per mesh_quality.
+# NOTE: The current model_worker.py ignores all params except `image` —
+# it always runs full 50-step diffusion + PBR texturing regardless of these values.
+# Params are sent anyway for forward-compatibility if the worker is updated.
 MESH_QUALITY_PARAMS: dict = {
     "draft": {
         "texture": False,
@@ -180,6 +183,14 @@ def check_service_health(url: str, name: str, path: str = "/health") -> None:
         sys.exit(1)
 
 
+def free_comfyui_vram(comfyui_url: str) -> None:
+    """Unload ComfyUI models from VRAM so Hunyuan3D has full GPU memory for texturing."""
+    try:
+        http_post(f"{comfyui_url}/free", {"unload_models": True, "free_memory": True}, timeout=10)
+    except Exception:
+        pass  # non-fatal — texturing will just be slower
+
+
 # ---------------------------------------------------------------------------
 # ComfyUI — image generation
 # ---------------------------------------------------------------------------
@@ -187,6 +198,9 @@ def check_service_health(url: str, name: str, path: str = "/health") -> None:
 def _build_workflow(prompt: str, seed: int, image_size: int) -> dict:
     with open(Path("workflows/flux_image.json")) as f:
         workflow = json.load(f)
+    # Strip any non-node top-level keys (e.g. _readme) — ComfyUI's validator
+    # expects every top-level value to be a dict and will 500 on strings.
+    workflow = {k: v for k, v in workflow.items() if isinstance(v, dict)}
     workflow[COMFYUI_POSITIVE_NODE]["inputs"]["text"] = prompt
     workflow[COMFYUI_SEED_NODE]["inputs"]["noise_seed"] = seed
     workflow[COMFYUI_LATENT_NODE]["inputs"]["width"] = image_size
@@ -472,6 +486,8 @@ def main() -> None:
                 done_images += 1
                 if not HAS_TQDM:
                     print(f"    → {image_path}")
+                # Free ComfyUI VRAM so Hunyuan3D has the full GPU for texturing
+                free_comfyui_vram(args.comfyui_url)
             except Exception as e:
                 failures.append({"id": asset_id, "stage": "image", "error": str(e)})
                 update_asset_status(asset_id, "failed", error=f"image: {e}")
@@ -480,6 +496,8 @@ def main() -> None:
                 continue
         else:
             done_images += 1
+            # Image already done but mesh not started — free VRAM in case ComfyUI still holds it
+            free_comfyui_vram(args.comfyui_url)
 
         # --- Mesh generation ---
         try:

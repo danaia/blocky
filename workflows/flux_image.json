@@ -2,7 +2,8 @@
   "_readme": "Blocky Phase 1 — Flux schnell workflow for ComfyUI API. BEFORE USING: update model filenames in nodes 1 (unet_name), 2 (clip_name1, clip_name2), and 3 (vae_name) to match your local checkpoint files. Node IDs 4 (prompt text), 5 (latent size), 8 (seed), and 13 (output) are referenced by run_batch.py — do not renumber them.",
   "1": {
     "inputs": {
-      "unet_name": "flux1-schnell.safetensors"
+      "unet_name": "flux1-schnell.safetensors",
+      "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
     "_meta": {"title": "Load Flux Model"}
