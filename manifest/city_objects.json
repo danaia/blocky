@@ -1,0 +1,102 @@
+[
+  {
+    "id": "streetlamp_001",
+    "category": "street_furniture",
+    "prompt": "single modern city streetlamp on pole, isolated on neutral light gray background, overhead street light fixture, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, background scene, multiple objects, cropped, partial view",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "bench_001",
+    "category": "street_furniture",
+    "prompt": "single wooden park bench with cast iron frame, isolated on neutral light gray background, city park bench, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, scene, multiple objects, cropped",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "trash_can_001",
+    "category": "street_furniture",
+    "prompt": "single urban trash can with lid, isolated on neutral light gray background, city street waste bin, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, scene, multiple objects, garbage, filth",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "cash_register_001",
+    "category": "storefront",
+    "prompt": "single modern cash register on a counter surface, isolated on neutral light gray background, retail point of sale terminal, game asset concept art, clean product render, no shadows",
+    "negative_prompt": "text, watermark, people, cluttered background, multiple objects, receipts",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "display_shelf_001",
+    "category": "storefront",
+    "prompt": "single freestanding retail display shelf unit with multiple tiers, isolated on neutral light gray background, empty store shelving, game asset concept art, clean product render, no shadows",
+    "negative_prompt": "text, watermark, people, products on shelf, cluttered background, price tags",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "traffic_light_001",
+    "category": "street_furniture",
+    "prompt": "single traffic light signal mounted on pole, isolated on neutral light gray background, urban traffic control device with red yellow green lights, game asset concept art, clean product render",
+    "negative_prompt": "text, watermark, people, road scene, multiple objects, street background",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "fire_hydrant_001",
+    "category": "street_furniture",
+    "prompt": "single red fire hydrant, isolated on neutral light gray background, american style cast iron fire hydrant, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, street scene, multiple objects, curb, road",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "crosswalk_signal_001",
+    "category": "street_furniture",
+    "prompt": "single pedestrian crosswalk signal post with walk indicator lights, isolated on neutral light gray background, urban crosswalk control box on pole, game asset concept art, clean product render",
+    "negative_prompt": "text, watermark, people, road scene, multiple objects, street background",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "bus_stop_shelter_001",
+    "category": "street_furniture",
+    "prompt": "single modern bus stop shelter with glass panels and built-in bench, isolated on neutral light gray background, transit shelter structure, game asset concept art, clean product render",
+    "negative_prompt": "text, watermark, people, street scene, advertisements, signage, road",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "mailbox_001",
+    "category": "street_furniture",
+    "prompt": "single blue USPS collection mailbox, isolated on neutral light gray background, american street mail drop box, game asset concept art, clean product render, no shadows, full object visible",
+    "negative_prompt": "text, watermark, people, street scene, multiple objects, labels",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  }
+]

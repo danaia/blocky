@@ -1,0 +1,110 @@
+{
+  "_readme": "Blocky Phase 1 — Flux schnell workflow for ComfyUI API. BEFORE USING: update model filenames in nodes 1 (unet_name), 2 (clip_name1, clip_name2), and 3 (vae_name) to match your local checkpoint files. Node IDs 4 (prompt text), 5 (latent size), 8 (seed), and 13 (output) are referenced by run_batch.py — do not renumber them.",
+  "1": {
+    "inputs": {
+      "unet_name": "flux1-schnell.safetensors"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "Load Flux Model"}
+  },
+  "2": {
+    "inputs": {
+      "clip_name1": "t5xxl_fp16.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {"title": "DualCLIPLoader"}
+  },
+  "3": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {"title": "Load VAE"}
+  },
+  "4": {
+    "inputs": {
+      "text": "POSITIVE_PROMPT",
+      "clip": ["2", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "Positive Prompt (injected by run_batch.py)"}
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {"title": "Empty Latent (size injected by run_batch.py)"}
+  },
+  "6": {
+    "inputs": {
+      "guidance": 3.5,
+      "conditioning": ["4", 0]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {"title": "Flux Guidance"}
+  },
+  "7": {
+    "inputs": {
+      "noise": ["8", 0],
+      "guider": ["9", 0],
+      "sampler": ["10", 0],
+      "sigmas": ["11", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "Sampler"}
+  },
+  "8": {
+    "inputs": {
+      "noise_seed": 12345
+    },
+    "class_type": "RandomNoise",
+    "_meta": {"title": "Seed (injected by run_batch.py)"}
+  },
+  "9": {
+    "inputs": {
+      "model": ["1", 0],
+      "conditioning": ["6", 0]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {"title": "BasicGuider"}
+  },
+  "10": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "KSamplerSelect"}
+  },
+  "11": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 1.0,
+      "model": ["1", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "BasicScheduler (4 steps for schnell)"}
+  },
+  "12": {
+    "inputs": {
+      "samples": ["7", 0],
+      "vae": ["3", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"}
+  },
+  "13": {
+    "inputs": {
+      "filename_prefix": "blocky",
+      "images": ["12", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": {"title": "Save Image (output node — do not renumber)"}
+  }
+}

@@ -1,1 +1,18 @@
 .env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local model checkpoints
+models/**/*.safetensors
+
+# Generated outputs — large binary files
+outputs/images/
+outputs/meshes/
+outputs/logs/
+outputs/index.jsonl
+
+# Keep the empty dir markers
+!outputs/images/.gitkeep
+!outputs/meshes/.gitkeep
+!outputs/logs/.gitkeep
