@@ -31,6 +31,12 @@ try:
 except ImportError:
     HAS_TQDM = False
 
+try:
+    from rembg import remove as rembg_remove, new_session as rembg_session
+    HAS_REMBG = True
+except ImportError:
+    HAS_REMBG = False
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -254,6 +260,31 @@ def generate_image(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(img_bytes)
+
+
+# ---------------------------------------------------------------------------
+# Background removal — strips background to alpha before Hunyuan3D ingestion
+# ---------------------------------------------------------------------------
+
+_rembg_session = None
+
+
+def remove_background(image_path: Path) -> None:
+    """Remove background from image_path in-place using rembg (u2net model).
+
+    Overwrites the file with a transparent-background RGBA PNG. The original
+    solid-background PNG is what causes Hunyuan3D to reconstruct flat planes.
+    No-op if rembg is not installed.
+    """
+    if not HAS_REMBG:
+        return
+    global _rembg_session
+    if _rembg_session is None:
+        _rembg_session = rembg_session("u2net", providers=["CPUExecutionProvider"])
+    with open(image_path, "rb") as f:
+        raw = f.read()
+    result = rembg_remove(raw, session=_rembg_session)
+    image_path.write_bytes(result)
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +513,7 @@ def main() -> None:
                     item["prompt"], image_path, args.comfyui_url,
                     item.get("image_size", 1024), seed,
                 )
+                remove_background(image_path)
                 update_asset_status(asset_id, "image_complete", image_path=str(image_path))
                 done_images += 1
                 if not HAS_TQDM:
