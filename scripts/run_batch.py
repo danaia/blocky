@@ -446,6 +446,8 @@ def main() -> None:
                         help=f"Hunyuan3D API URL (default: {HUNYUAN_URL})")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate manifest and show planned work without executing")
+    parser.add_argument("--phase", choices=["images", "meshes", "all"], default="all",
+                        help="Run only the image phase, only the mesh phase, or both (default: all)")
     args = parser.parse_args()
 
     items = load_manifest(args.manifest)
@@ -456,8 +458,11 @@ def main() -> None:
     print(f"  Manifest:     {args.manifest}")
     print(f"  Object types: {len(items)}")
     print(f"  Total assets: {total}")
-    print(f"  ComfyUI:      {args.comfyui_url}")
-    print(f"  Hunyuan3D:    {args.hunyuan_url}")
+    print(f"  Phase:        {args.phase}")
+    if args.phase in ("images", "all"):
+        print(f"  ComfyUI:      {args.comfyui_url}")
+    if args.phase in ("meshes", "all"):
+        print(f"  Hunyuan3D:    {args.hunyuan_url}")
     print(f"{'='*60}\n")
 
     if args.dry_run:
@@ -474,8 +479,10 @@ def main() -> None:
 
     # Service health checks
     print("Checking services...")
-    check_service_health(args.comfyui_url, "ComfyUI", path="/system_stats")
-    check_service_health(args.hunyuan_url, "Hunyuan3D", path="/health")
+    if args.phase in ("images", "all"):
+        check_service_health(args.comfyui_url, "ComfyUI", path="/system_stats")
+    if args.phase in ("meshes", "all"):
+        check_service_health(args.hunyuan_url, "Hunyuan3D", path="/health")
     print()
 
     # Ensure output dirs exist
@@ -514,31 +521,44 @@ def main() -> None:
             continue
 
         # --- Image generation ---
-        if cur_status != "image_complete" or not image_path.exists():
-            try:
-                if not HAS_TQDM:
-                    print(f"  [{asset_id}] image (seed={seed})…")
-                generate_image(
-                    item["prompt"], image_path, args.comfyui_url,
-                    item.get("image_size", 1024), seed,
-                )
-                remove_background(image_path)
-                update_asset_status(asset_id, "image_complete", image_path=str(image_path))
+        if args.phase in ("images", "all"):
+            if cur_status != "image_complete" or not image_path.exists():
+                try:
+                    if not HAS_TQDM:
+                        print(f"  [{asset_id}] image (seed={seed})…")
+                    generate_image(
+                        item["prompt"], image_path, args.comfyui_url,
+                        item.get("image_size", 1024), seed,
+                    )
+                    remove_background(image_path)
+                    update_asset_status(asset_id, "image_complete", image_path=str(image_path))
+                    done_images += 1
+                    if not HAS_TQDM:
+                        print(f"    → {image_path}")
+                    # Free ComfyUI VRAM between assets when running both phases together
+                    if args.phase == "all":
+                        free_comfyui_vram(args.comfyui_url)
+                except Exception as e:
+                    failures.append({"id": asset_id, "stage": "image", "error": str(e)})
+                    update_asset_status(asset_id, "failed", error=f"image: {e}")
+                    if not HAS_TQDM:
+                        print(f"    ✗ IMAGE FAILED: {e}")
+                    continue
+            else:
                 done_images += 1
-                if not HAS_TQDM:
-                    print(f"    → {image_path}")
-                # Free ComfyUI VRAM so Hunyuan3D has the full GPU for texturing
-                free_comfyui_vram(args.comfyui_url)
-            except Exception as e:
-                failures.append({"id": asset_id, "stage": "image", "error": str(e)})
-                update_asset_status(asset_id, "failed", error=f"image: {e}")
-                if not HAS_TQDM:
-                    print(f"    ✗ IMAGE FAILED: {e}")
-                continue
+                if args.phase == "all":
+                    free_comfyui_vram(args.comfyui_url)
         else:
-            done_images += 1
-            # Image already done but mesh not started — free VRAM in case ComfyUI still holds it
-            free_comfyui_vram(args.comfyui_url)
+            # meshes-only phase — count image as done if it exists
+            if cur_status == "image_complete" and image_path.exists():
+                done_images += 1
+            elif not image_path.exists():
+                if not HAS_TQDM:
+                    print(f"  ✗ {asset_id} — no image found, skipping mesh")
+                continue
+
+        if args.phase == "images":
+            continue  # images-only: don't generate mesh
 
         # --- Mesh generation ---
         try:

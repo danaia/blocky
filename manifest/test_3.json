@@ -12,7 +12,7 @@
   {
     "id": "bench_001",
     "category": "street_furniture",
-    "prompt": "single wooden park bench with cast iron frame, pure white background, floating in void, city park bench, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "prompt": "single wooden park bench with cast iron frame, pure white background, floating in void, alpha channel around object, city park bench, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
     "negative_prompt": "text, watermark, people, scene, multiple objects, cropped, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
     "count": 1,
     "seed": null,
@@ -22,7 +22,7 @@
   {
     "id": "fire_hydrant_001",
     "category": "street_furniture",
-    "prompt": "single red fire hydrant, pure white background, floating in void, american style cast iron fire hydrant, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "prompt": "single red fire hydrant, pure white background, floating in void, alpha channel around object, american style cast iron fire hydrant, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
     "negative_prompt": "text, watermark, people, street scene, multiple objects, curb, road, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
     "count": 1,
     "seed": null,

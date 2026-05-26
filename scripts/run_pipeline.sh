@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# run_pipeline.sh — Start ComfyUI + Hunyuan3D, run the batch, then shut down.
+# run_pipeline.sh — Two-phase pipeline: images first (ComfyUI), then meshes (Hunyuan3D).
+# ComfyUI is fully stopped and VRAM confirmed free before Hunyuan3D starts.
 #
 # Usage:
 #   bash scripts/run_pipeline.sh [manifest_file]
@@ -25,6 +26,9 @@ HUNYUAN_PYTHON="${HUNYUAN_DIR}/.venv/bin/python"
 COMFYUI_PYTHON="${COMFYUI_DIR}/.venv/bin/python"
 BLOCKY_PYTHON="${BLOCKY_DIR}/.venv/bin/python"
 
+# VRAM threshold: don't start Hunyuan3D until this many MiB are free (RTX 5090 = 32768 MiB)
+VRAM_FREE_THRESHOLD=20000
+
 # ---------------------------------------------------------------------------
 # Cleanup: kill only services WE started
 # ---------------------------------------------------------------------------
@@ -43,19 +47,28 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# Helper: wait until a port accepts connections, with PID liveness check
+# Kill ALL lingering pipeline processes from previous/crashed runs
+# ---------------------------------------------------------------------------
+kill_stale_processes() {
+    echo "Clearing stale processes and ports..."
+    pkill -f "api_server.py"       2>/dev/null && echo "  Killed stale Hunyuan3D" || true
+    pkill -f "ComfyUI/main.py"     2>/dev/null && echo "  Killed stale ComfyUI"   || true
+    fuser -k "${HUNYUAN_PORT}/tcp" 2>/dev/null || true
+    fuser -k "${COMFYUI_PORT}/tcp" 2>/dev/null || true
+    sleep 3
+}
+
+# ---------------------------------------------------------------------------
+# Wait until a port accepts connections (with PID liveness check)
 # ---------------------------------------------------------------------------
 wait_for_port() {
     local name="$1" port="$2" pid="${3:-}"
     echo -n "  Waiting for $name on port $port"
     local elapsed=0
     while ! (echo > /dev/tcp/localhost/"$port") 2>/dev/null; do
-        # Fail fast if the process we launched has already died
         if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
             echo " DIED"
-            echo ""
             echo "ERROR: $name (PID $pid) exited before becoming ready." >&2
-            echo "       Check the log for details." >&2
             exit 1
         fi
         sleep 2
@@ -71,60 +84,117 @@ wait_for_port() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Start Hunyuan3D API (if not already running)
+# Stop a service and wait for its port to close
 # ---------------------------------------------------------------------------
-if (echo > /dev/tcp/localhost/$HUNYUAN_PORT) 2>/dev/null; then
-    echo "Hunyuan3D already running on port $HUNYUAN_PORT, skipping start."
-else
-    echo "Starting Hunyuan3D API server..."
-    fuser -k "${HUNYUAN_PORT}/tcp" 2>/dev/null || true
-
-    # Must cd into the src dir so local hy3dshape package takes precedence
-    nohup bash -c "
-        cd '${HUNYUAN_DIR}/hunyuan3d-2.1-src'
-        export CUDA_HOME=/usr/local/cuda-12.8
-        export PATH=\"\${CUDA_HOME}/bin:\${PATH}\"
-        export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-        export CUBLAS_WORKSPACE_CONFIG=:4096:8
-        exec '${HUNYUAN_PYTHON}' api_server.py \
-            --model_path tencent/Hunyuan3D-2.1 \
-            --subfolder hunyuan3d-dit-v2-1 \
-            --low_vram_mode \
-            --port '${HUNYUAN_PORT}'
-    " > "${BLOCKY_DIR}/outputs/logs/hunyuan_api.log" 2>&1 &
-    HUNYUAN_PID=$!
-    echo "  PID $HUNYUAN_PID (log: outputs/logs/hunyuan_api.log)"
-fi
+stop_service() {
+    local name="$1" pid="$2" port="$3"
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "  Stopping $name (PID $pid)..."
+        kill "$pid" 2>/dev/null
+        local elapsed=0
+        while (echo > /dev/tcp/localhost/"$port") 2>/dev/null; do
+            sleep 1
+            elapsed=$((elapsed + 1))
+            [[ $elapsed -ge 30 ]] && break
+        done
+        echo "  $name stopped."
+    fi
+}
 
 # ---------------------------------------------------------------------------
-# 2. Start ComfyUI (if not already running)
+# Poll nvidia-smi until free VRAM exceeds threshold
 # ---------------------------------------------------------------------------
-if (echo > /dev/tcp/localhost/$COMFYUI_PORT) 2>/dev/null; then
-    echo "ComfyUI already running on port $COMFYUI_PORT, skipping start."
-else
-    echo "Starting ComfyUI..."
-    fuser -k "${COMFYUI_PORT}/tcp" 2>/dev/null || true
+wait_for_vram() {
+    local threshold="$1"
+    echo -n "  Waiting for VRAM >${threshold} MiB free"
+    local elapsed=0
+    while true; do
+        local free_mib
+        free_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null \
+                   | head -1 | tr -d ' ')
+        if [[ -n "$free_mib" ]] && [[ "$free_mib" -ge "$threshold" ]]; then
+            echo " — ${free_mib} MiB free"
+            return 0
+        fi
+        echo -n " (${free_mib:-?} MiB)"
+        sleep 3
+        elapsed=$((elapsed + 3))
+        if [[ $elapsed -ge 90 ]]; then
+            echo " — timeout, proceeding anyway"
+            return 0
+        fi
+    done
+}
 
-    nohup "$COMFYUI_PYTHON" "${COMFYUI_DIR}/main.py" \
-        --port "$COMFYUI_PORT" \
-        > "${BLOCKY_DIR}/outputs/logs/comfyui.log" 2>&1 &
-    COMFYUI_PID=$!
-    echo "  PID $COMFYUI_PID (log: outputs/logs/comfyui.log)"
-fi
+# ===========================================================================
+# PRE-FLIGHT: kill stale processes, show GPU state
+# ===========================================================================
+cd "${BLOCKY_DIR}"
+mkdir -p outputs/logs
 
-# ---------------------------------------------------------------------------
-# 3. Wait for both services to be ready
-# ---------------------------------------------------------------------------
-wait_for_port "Hunyuan3D" "$HUNYUAN_PORT" "$HUNYUAN_PID"
-wait_for_port "ComfyUI"   "$COMFYUI_PORT" "$COMFYUI_PID"
+kill_stale_processes
 
-# ---------------------------------------------------------------------------
-# 4. Run the batch pipeline
-# ---------------------------------------------------------------------------
+echo ""
+nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used \
+           --format=csv,noheader 2>/dev/null \
+  | awk -F',' '{printf "  GPU: %s | total=%s | free=%s | used=%s\n", $1,$2,$3,$4}' \
+  || true
+
 echo ""
 echo "Running batch: $MANIFEST"
-cd "${BLOCKY_DIR}"
-"$BLOCKY_PYTHON" scripts/run_batch.py "$MANIFEST"
+
+# ===========================================================================
+# PHASE 1 — Image generation (ComfyUI only; Hunyuan3D NOT running)
+# ===========================================================================
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "PHASE 1: Image generation (ComfyUI)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+echo "Starting ComfyUI..."
+nohup "$COMFYUI_PYTHON" "${COMFYUI_DIR}/main.py" \
+    --port "$COMFYUI_PORT" \
+    > "${BLOCKY_DIR}/outputs/logs/comfyui.log" 2>&1 &
+COMFYUI_PID=$!
+echo "  PID $COMFYUI_PID (log: outputs/logs/comfyui.log)"
+
+wait_for_port "ComfyUI" "$COMFYUI_PORT" "$COMFYUI_PID"
+
+"$BLOCKY_PYTHON" scripts/run_batch.py "$MANIFEST" --phase images
+
+# Fully stop ComfyUI and confirm VRAM is free before Phase 2
+stop_service "ComfyUI" "$COMFYUI_PID" "$COMFYUI_PORT"
+COMFYUI_PID=""
+
+wait_for_vram "$VRAM_FREE_THRESHOLD"
+
+# ===========================================================================
+# PHASE 2 — Mesh generation (Hunyuan3D only; ComfyUI NOT running)
+# ===========================================================================
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "PHASE 2: Mesh generation (Hunyuan3D)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+echo "Starting Hunyuan3D API server..."
+nohup bash -c "
+    cd '${HUNYUAN_DIR}/hunyuan3d-2.1-src'
+    export CUDA_HOME=/usr/local/cuda-12.8
+    export PATH=\"\${CUDA_HOME}/bin:\${PATH}\"
+    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    export CUBLAS_WORKSPACE_CONFIG=:4096:8
+    exec '${HUNYUAN_PYTHON}' api_server.py \
+        --model_path tencent/Hunyuan3D-2.1 \
+        --subfolder hunyuan3d-dit-v2-1 \
+        --low_vram_mode \
+        --port '${HUNYUAN_PORT}'
+" > "${BLOCKY_DIR}/outputs/logs/hunyuan_api.log" 2>&1 &
+HUNYUAN_PID=$!
+echo "  PID $HUNYUAN_PID (log: outputs/logs/hunyuan_api.log)"
+
+wait_for_port "Hunyuan3D" "$HUNYUAN_PORT" "$HUNYUAN_PID"
+
+"$BLOCKY_PYTHON" scripts/run_batch.py "$MANIFEST" --phase meshes
 
 echo ""
 echo "Pipeline complete."
