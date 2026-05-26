@@ -280,11 +280,20 @@ def remove_background(image_path: Path) -> None:
         return
     global _rembg_session
     if _rembg_session is None:
-        _rembg_session = rembg_session("u2net", providers=["CPUExecutionProvider"])
+        _rembg_session = rembg_session("birefnet-general", providers=["CPUExecutionProvider"])
     with open(image_path, "rb") as f:
         raw = f.read()
     result = rembg_remove(raw, session=_rembg_session)
-    image_path.write_bytes(result)
+    # Threshold: kill any semi-transparent halo pixels that confuse Hunyuan3D
+    from PIL import Image as _Image
+    import io as _io
+    import numpy as _np
+    img = _Image.open(_io.BytesIO(result)).convert("RGBA")
+    arr = _np.array(img)
+    arr[:, :, 3] = _np.where(arr[:, :, 3] < 10, 0, arr[:, :, 3])  # hard-zero near-transparent
+    buf = _io.BytesIO()
+    _Image.fromarray(arr).save(buf, format="PNG")
+    image_path.write_bytes(buf.getvalue())
 
 
 # ---------------------------------------------------------------------------
