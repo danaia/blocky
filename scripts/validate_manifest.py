@@ -7,7 +7,7 @@ Usage:
 import json
 import sys
 
-REQUIRED_FIELDS = {"id", "category", "prompt", "negative_prompt", "count", "seed", "image_size", "mesh_quality"}
+REQUIRED_FIELDS = {"id", "category", "prompt", "negative_prompt", "count", "seed", "image_size", "mesh_quality", "target_height_m"}
 VALID_IMAGE_SIZES = {512, 768, 1024}
 VALID_MESH_QUALITIES = {"draft", "standard"}
 
@@ -46,6 +46,11 @@ def validate_manifest(path: str) -> list:
 
         if item["seed"] is not None and not isinstance(item["seed"], int):
             errors.append(f"[{entry_id}] 'seed' must be null or an integer, got: {item['seed']!r}")
+
+        if not isinstance(item["target_height_m"], (int, float)) or item["target_height_m"] <= 0:
+            errors.append(
+                f"[{entry_id}] 'target_height_m' must be a positive number in meters, got: {item['target_height_m']!r}"
+            )
 
     # Duplicate ID check
     ids = [item.get("id") for item in data if "id" in item]

@@ -9,11 +9,13 @@ LM Studio is not used by this script.
 """
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 
 DEFAULT_OUTPUT_DIR = Path("in_game_assets/street_furniture")
@@ -60,6 +62,14 @@ def build_settings(args: argparse.Namespace) -> dict:
     return settings
 
 
+def load_manifest_heights(manifest_path: str | None) -> dict[str, float]:
+    if not manifest_path:
+        return {}
+    with open(manifest_path) as f:
+        data = json.load(f)
+    return {item["id"]: float(item["target_height_m"]) for item in data}
+
+
 def parse_args() -> argparse.Namespace:
     argv = sys.argv
     if "--" in argv:
@@ -69,6 +79,7 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="Batch decimate GLB meshes in Blender")
     parser.add_argument("inputs", nargs="+", help="Input GLB files")
+    parser.add_argument("--manifest", default=None, help="Optional manifest JSON used to look up target_height_m per asset")
     parser.add_argument(
         "--output-dir",
         default=str(DEFAULT_OUTPUT_DIR),
@@ -100,15 +111,57 @@ def reset_scene() -> None:
 def imported_mesh_objects(glb_path: Path):
     before = {obj.name for obj in bpy.data.objects}
     bpy.ops.import_scene.gltf(filepath=str(glb_path))
-    imported = [obj for obj in bpy.data.objects if obj.name not in before and obj.type == "MESH"]
-    if not imported:
-        imported = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
-    return imported
+    imported_objects = [obj for obj in bpy.data.objects if obj.name not in before]
+    mesh_objects = [obj for obj in imported_objects if obj.type == "MESH"]
+    if not mesh_objects:
+        imported_objects = list(bpy.context.scene.objects)
+        mesh_objects = [obj for obj in imported_objects if obj.type == "MESH"]
+    return imported_objects, mesh_objects
 
 
 def ensure_object_mode() -> None:
     if bpy.context.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def bounds_for_mesh_objects(mesh_objects: list[bpy.types.Object]) -> tuple[float, float]:
+    min_z = None
+    max_z = None
+    for obj in mesh_objects:
+        for corner in obj.bound_box:
+            world_corner = obj.matrix_world @ Vector(corner)
+            min_z = world_corner.z if min_z is None else min(min_z, world_corner.z)
+            max_z = world_corner.z if max_z is None else max(max_z, world_corner.z)
+    if min_z is None or max_z is None:
+        raise RuntimeError("Unable to measure imported mesh bounds")
+    return min_z, max_z
+
+
+def root_objects(imported_objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
+    imported_names = {obj.name for obj in imported_objects}
+    return [obj for obj in imported_objects if obj.parent is None or obj.parent.name not in imported_names]
+
+
+def scale_and_ground_objects(imported_objects: list[bpy.types.Object], mesh_objects: list[bpy.types.Object], target_height_m: float) -> tuple[float, float, float]:
+    min_z, max_z = bounds_for_mesh_objects(mesh_objects)
+    current_height = max_z - min_z
+    if current_height <= 0:
+        raise RuntimeError("Imported mesh height is zero; cannot scale to target height")
+
+    scale_factor = target_height_m / current_height
+    for obj in root_objects(imported_objects):
+        obj.location = obj.location * scale_factor
+        obj.scale = tuple(component * scale_factor for component in obj.scale)
+
+    bpy.context.view_layer.update()
+    min_z, max_z = bounds_for_mesh_objects(mesh_objects)
+    z_offset = -min_z
+    for obj in root_objects(imported_objects):
+        obj.location.z += z_offset
+
+    bpy.context.view_layer.update()
+    _, final_max_z = bounds_for_mesh_objects(mesh_objects)
+    return current_height, scale_factor, final_max_z
 
 
 def process_object(obj: bpy.types.Object, ratio: float, merge_threshold: float, fill_holes_sides: int, smooth_angle_deg: float) -> tuple[int, int]:
@@ -149,6 +202,7 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     settings = build_settings(args)
+    manifest_heights = load_manifest_heights(args.manifest)
     results = []
 
     print(
@@ -164,8 +218,12 @@ def main() -> None:
         if not glb_path.exists():
             raise FileNotFoundError(glb_path)
 
+        asset_id = glb_path.stem
+        manifest_id = asset_id.rsplit("_", 1)[0]
+        target_height_m = manifest_heights.get(manifest_id)
+
         reset_scene()
-        mesh_objects = imported_mesh_objects(glb_path)
+        imported_objects, mesh_objects = imported_mesh_objects(glb_path)
         if not mesh_objects:
             raise RuntimeError(f"No mesh objects imported from {glb_path}")
 
@@ -182,6 +240,16 @@ def main() -> None:
             total_start_faces += start_faces
             total_final_faces += final_faces
 
+        original_height_m = None
+        scale_factor = None
+        final_height_m = None
+        if target_height_m is not None:
+            original_height_m, scale_factor, final_height_m = scale_and_ground_objects(
+                imported_objects,
+                mesh_objects,
+                target_height_m,
+            )
+
         output_path = output_dir / glb_path.name
         export_glb(output_path)
         results.append(
@@ -190,6 +258,10 @@ def main() -> None:
                 "output": str(output_path),
                 "start_faces": total_start_faces,
                 "final_faces": total_final_faces,
+                "target_height_m": target_height_m,
+                "original_height_m": original_height_m,
+                "scale_factor": scale_factor,
+                "final_height_m": final_height_m,
             }
         )
 

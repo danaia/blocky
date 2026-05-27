@@ -148,13 +148,15 @@ def load_manifest(path: str) -> list:
     with open(path) as f:
         data = json.load(f)
 
-    required = {"id", "category", "prompt", "negative_prompt", "count", "seed", "image_size", "mesh_quality"}
+    required = {"id", "category", "prompt", "negative_prompt", "count", "seed", "image_size", "mesh_quality", "target_height_m"}
     for i, item in enumerate(data):
         missing = required - set(item.keys())
         if missing:
             raise ValueError(f"Entry {i} ({item.get('id', 'UNKNOWN')}) missing fields: {missing}")
         if not isinstance(item["count"], int) or item["count"] < 1:
             raise ValueError(f"'{item['id']}': count must be a positive integer")
+        if not isinstance(item["target_height_m"], (int, float)) or item["target_height_m"] <= 0:
+            raise ValueError(f"'{item['id']}': target_height_m must be a positive number in meters")
         if len(item["prompt"]) > 500 or len(item["negative_prompt"]) > 500:
             raise ValueError(f"'{item['id']}': prompt/negative_prompt must be under 500 chars")
 
@@ -444,6 +446,7 @@ def write_asset_metadata(
         "seed": seed,
         "image_size": manifest_item["image_size"],
         "mesh_quality": manifest_item["mesh_quality"],
+        "target_height_m": manifest_item["target_height_m"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "generator": {
             "image": IMAGE_GENERATOR,
@@ -550,11 +553,25 @@ def main() -> None:
         cur_status = index.get(asset_id, {}).get("status", "pending")
 
         if cur_status == "mesh_complete":
-            done_images += 1
-            done_meshes += 1
+            if image_path.exists() and glb_path.exists():
+                done_images += 1
+                done_meshes += 1
+                if not HAS_TQDM:
+                    print(f"  ✓ {asset_id} — already complete, skipping")
+                continue
+
+            cur_status = "image_complete" if image_path.exists() else "pending"
+            update_asset_status(
+                asset_id,
+                cur_status,
+                image_path=str(image_path) if image_path.exists() else None,
+                glb_path=str(glb_path) if glb_path.exists() else None,
+                vertex_count=None,
+                file_size_bytes=None,
+                error=None,
+            )
             if not HAS_TQDM:
-                print(f"  ✓ {asset_id} — already complete, skipping")
-            continue
+                print(f"  ↺ {asset_id} — repaired stale index entry, regenerating missing outputs")
 
         # --- Image generation ---
         if args.phase in ("images", "all"):

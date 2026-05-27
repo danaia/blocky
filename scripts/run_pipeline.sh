@@ -153,6 +153,7 @@ run_blender_decimation() {
         ran_any=1
         echo "Decimating category: $category"
         "$BLENDER_BIN" --background --python "$BLOCKY_DIR/scripts/decimate_glbs.py" -- \
+            --manifest "$MANIFEST" \
             --preset "$DECIMATE_PRESET" \
             --output-dir "$BLOCKY_DIR/$DECIMATE_OUTPUT_ROOT/$category" \
             "${glbs[@]}"
