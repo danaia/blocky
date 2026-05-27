@@ -170,31 +170,78 @@ wait_for_vram "$VRAM_FREE_THRESHOLD"
 
 # ===========================================================================
 # PHASE 2 — Mesh generation (Hunyuan3D only; ComfyUI NOT running)
+#   Retries up to MAX_MESH_RETRIES times, restarting Hunyuan3D between each
+#   attempt, so a single CUDA failure doesn't block the remaining assets.
 # ===========================================================================
+MAX_MESH_RETRIES=10
+MESH_ATTEMPT=0
+
+count_remaining() {
+    "$BLOCKY_PYTHON" - <<'PYEOF'
+import json, sys
+from pathlib import Path
+entries = [json.loads(l) for l in Path("outputs/index.jsonl").read_text().splitlines() if l.strip()]
+pending = sum(1 for e in entries if e["status"] in ("image_complete", "failed"))
+print(pending)
+PYEOF
+}
+
+start_hunyuan() {
+    echo "Starting Hunyuan3D API server..."
+    nohup bash -c "
+        cd '${HUNYUAN_DIR}/hunyuan3d-2.1-src'
+        export CUDA_HOME=/usr/local/cuda-12.8
+        export PATH=\"\${CUDA_HOME}/bin:\${PATH}\"
+        export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+        export CUBLAS_WORKSPACE_CONFIG=:4096:8
+        exec '${HUNYUAN_PYTHON}' api_server.py \
+            --model_path tencent/Hunyuan3D-2.1 \
+            --subfolder hunyuan3d-dit-v2-1 \
+            --low_vram_mode \
+            --port '${HUNYUAN_PORT}'
+    " >> "${BLOCKY_DIR}/outputs/logs/hunyuan_api.log" 2>&1 &
+    HUNYUAN_PID=$!
+    echo "  PID $HUNYUAN_PID (log: outputs/logs/hunyuan_api.log)"
+    wait_for_port "Hunyuan3D" "$HUNYUAN_PORT" "$HUNYUAN_PID"
+}
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "PHASE 2: Mesh generation (Hunyuan3D)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-echo "Starting Hunyuan3D API server..."
-nohup bash -c "
-    cd '${HUNYUAN_DIR}/hunyuan3d-2.1-src'
-    export CUDA_HOME=/usr/local/cuda-12.8
-    export PATH=\"\${CUDA_HOME}/bin:\${PATH}\"
-    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    export CUBLAS_WORKSPACE_CONFIG=:4096:8
-    exec '${HUNYUAN_PYTHON}' api_server.py \
-        --model_path tencent/Hunyuan3D-2.1 \
-        --subfolder hunyuan3d-dit-v2-1 \
-        --low_vram_mode \
-        --port '${HUNYUAN_PORT}'
-" > "${BLOCKY_DIR}/outputs/logs/hunyuan_api.log" 2>&1 &
-HUNYUAN_PID=$!
-echo "  PID $HUNYUAN_PID (log: outputs/logs/hunyuan_api.log)"
+start_hunyuan
 
-wait_for_port "Hunyuan3D" "$HUNYUAN_PORT" "$HUNYUAN_PID"
+while true; do
+    MESH_ATTEMPT=$((MESH_ATTEMPT + 1))
+    echo ""
+    echo "  Mesh attempt ${MESH_ATTEMPT}/${MAX_MESH_RETRIES}..."
 
-"$BLOCKY_PYTHON" scripts/run_batch.py "$MANIFEST" --phase meshes
+    set +e
+    "$BLOCKY_PYTHON" scripts/run_batch.py "$MANIFEST" --phase meshes \
+        --hunyuan-url "http://localhost:${HUNYUAN_PORT}"
+    MESH_EXIT=$?
+    set -e
+
+    REMAINING=$(count_remaining)
+    echo "  Remaining after attempt ${MESH_ATTEMPT}: ${REMAINING} assets"
+
+    if [[ "$REMAINING" -eq 0 ]]; then
+        echo "  All assets complete."
+        break
+    fi
+
+    if [[ "$MESH_ATTEMPT" -ge "$MAX_MESH_RETRIES" ]]; then
+        echo "  Max retries (${MAX_MESH_RETRIES}) reached. ${REMAINING} assets unfinished."
+        break
+    fi
+
+    echo "  CUDA failure detected — restarting Hunyuan3D and retrying ${REMAINING} assets..."
+    stop_service "Hunyuan3D" "$HUNYUAN_PID" "$HUNYUAN_PORT"
+    HUNYUAN_PID=""
+    wait_for_vram "$VRAM_FREE_THRESHOLD"
+    start_hunyuan
+done
 
 echo ""
 echo "Pipeline complete."

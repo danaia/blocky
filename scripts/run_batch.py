@@ -300,21 +300,43 @@ def remove_background(image_path: Path) -> None:
 # Hunyuan3D — mesh generation  (REST API at localhost:8081)
 # ---------------------------------------------------------------------------
 
-def _poll_hunyuan(uid: str, hunyuan_url: str, timeout: int = 1200) -> bytes:
-    """Poll /status/{uid} until completed. Returns raw GLB bytes. Raises on error/timeout."""
+def _poll_hunyuan(uid: str, hunyuan_url: str, timeout: int = 1200, stall_timeout: int = 120) -> bytes:
+    """Poll /status/{uid} until completed. Returns raw GLB bytes. Raises on error/timeout/stall.
+
+    stall_timeout: if status stays unchanged (e.g. stuck at 'processing' after a CUDA crash)
+    for this many seconds, raise immediately rather than waiting for the full timeout.
+    """
     deadline = time.time() + timeout
+    stall_deadline = time.time() + stall_timeout
+    last_status = None
+    consecutive_conn_failures = 0
+
     while time.time() < deadline:
         try:
             data = json.loads(http_get(f"{hunyuan_url}/status/{uid}", timeout=15))
+            consecutive_conn_failures = 0
             status = data.get("status")
+            if status != last_status:
+                stall_deadline = time.time() + stall_timeout  # reset stall timer on any change
+                last_status = status
             if status == "completed":
                 return base64.b64decode(data["model_base64"])
             if status == "error":
                 raise RuntimeError(f"Hunyuan3D error for {uid}: {data.get('message', 'unknown')}")
+            if time.time() > stall_deadline:
+                raise RuntimeError(
+                    f"Hunyuan3D task {uid} stalled in '{status}' for >{stall_timeout}s "
+                    f"(likely CUDA failure — restart Hunyuan3D)"
+                )
         except RuntimeError:
             raise
         except Exception:
-            pass
+            consecutive_conn_failures += 1
+            if consecutive_conn_failures >= 6:  # 30s of connection failures → server died
+                raise RuntimeError(
+                    f"Hunyuan3D unreachable for {consecutive_conn_failures} consecutive polls "
+                    f"(task {uid}) — server may have crashed"
+                )
         time.sleep(5)
     raise RuntimeError(f"Hunyuan3D task {uid} timed out after {timeout}s")
 
@@ -494,6 +516,7 @@ def main() -> None:
     failures: list = []
     done_images = 0
     done_meshes = 0
+    consecutive_stall_failures = 0
 
     all_assets = [(item, v) for item in items for v in range(1, item["count"] + 1)]
     iterator = tqdm(all_assets, unit="asset") if HAS_TQDM else all_assets
@@ -579,6 +602,7 @@ def main() -> None:
                 file_size_bytes=sanity["file_size_bytes"],
             )
             done_meshes += 1
+            consecutive_stall_failures = 0  # reset on success
             if not HAS_TQDM:
                 sz_kb = sanity["file_size_bytes"] // 1024
                 print(f"    → {glb_path} ({sanity['vertex_count']} verts, {sz_kb} KB)")
@@ -587,6 +611,17 @@ def main() -> None:
             update_asset_status(asset_id, "failed", error=f"mesh: {e}")
             if not HAS_TQDM:
                 print(f"    ✗ MESH FAILED: {e}")
+            # If this looks like a CUDA stall (Hunyuan3D context is corrupted), stop
+            # immediately — every remaining asset will also stall for 120s each.
+            # Let run_pipeline.sh restart Hunyuan3D and retry.
+            if "stalled" in str(e) or "unreachable" in str(e):
+                consecutive_stall_failures += 1
+                if consecutive_stall_failures >= 2:
+                    print(f"\n  ⚠ {consecutive_stall_failures} consecutive stall failures — "
+                          f"CUDA context likely corrupted. Stopping batch so Hunyuan3D can restart.")
+                    break
+            else:
+                consecutive_stall_failures = 0
 
     # Summary
     print(f"\n{'='*60}")
