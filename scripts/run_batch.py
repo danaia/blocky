@@ -14,6 +14,7 @@ Asset State Machine (outputs/index.jsonl):
 import argparse
 import base64
 import hashlib
+import io
 import json
 import struct
 import sys
@@ -24,6 +25,10 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from PIL import Image
+
+from rewrite_glb_textures import rewrite_glb_embedded_textures
 
 try:
     from tqdm import tqdm
@@ -43,6 +48,8 @@ except ImportError:
 
 COMFYUI_URL = "http://localhost:8188"
 HUNYUAN_URL = "http://localhost:8081"
+EMBEDDED_TEXTURE_SIZE = 1024
+EMBEDDED_JPEG_QUALITY = 85
 
 OUTPUT_DIR = Path("outputs")
 LOG_DIR = OUTPUT_DIR / "logs"
@@ -470,6 +477,12 @@ def main() -> None:
                         help="Validate manifest and show planned work without executing")
     parser.add_argument("--phase", choices=["images", "meshes", "all"], default="all",
                         help="Run only the image phase, only the mesh phase, or both (default: all)")
+    parser.add_argument("--embedded-texture-size", type=int, default=EMBEDDED_TEXTURE_SIZE,
+                        dest="embedded_texture_size",
+                        help=f"Maximum width/height for textures embedded in generated GLBs (default: {EMBEDDED_TEXTURE_SIZE})")
+    parser.add_argument("--embedded-jpeg-quality", type=int, default=EMBEDDED_JPEG_QUALITY,
+                        dest="embedded_jpeg_quality",
+                        help=f"JPEG quality for opaque embedded GLB textures (default: {EMBEDDED_JPEG_QUALITY})")
     args = parser.parse_args()
 
     items = load_manifest(args.manifest)
@@ -590,6 +603,11 @@ def main() -> None:
             mesh_info = generate_mesh(
                 image_path, glb_path, item.get("mesh_quality", "draft"), seed, args.hunyuan_url,
             )
+            texture_stats = rewrite_glb_embedded_textures(
+                glb_path,
+                max_texture_size=args.embedded_texture_size,
+                jpeg_quality=args.embedded_jpeg_quality,
+            )
             sanity = sanity_check_mesh(glb_path)
             if not sanity["exists"] or not sanity["size_ok"]:
                 raise RuntimeError(f"Sanity check failed: {sanity}")
@@ -605,7 +623,9 @@ def main() -> None:
             consecutive_stall_failures = 0  # reset on success
             if not HAS_TQDM:
                 sz_kb = sanity["file_size_bytes"] // 1024
+                embedded = texture_stats["rewritten_images"]
                 print(f"    → {glb_path} ({sanity['vertex_count']} verts, {sz_kb} KB)")
+                print(f"      embedded textures: {embedded} rewritten to <= {args.embedded_texture_size}px")
         except Exception as e:
             failures.append({"id": asset_id, "stage": "mesh", "error": str(e)})
             update_asset_status(asset_id, "failed", error=f"mesh: {e}")

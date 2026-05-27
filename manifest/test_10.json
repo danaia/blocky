@@ -1,0 +1,102 @@
+[
+  {
+    "id": "streetlamp_001",
+    "category": "street_furniture",
+    "prompt": "single modern city streetlamp on pole, pure white background, floating in void, alpha channel around object, overhead street light fixture, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, background scene, multiple objects, cropped, partial view, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "bench_001",
+    "category": "street_furniture",
+    "prompt": "single wooden park bench with cast iron frame, pure white background, floating in void, alpha channel around object, city park bench, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, scene, multiple objects, cropped, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "trash_can_001",
+    "category": "street_furniture",
+    "prompt": "single urban trash can with lid, pure white background, floating in void, alpha channel around object, city street waste bin, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, scene, multiple objects, garbage, filth, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "cash_register_001",
+    "category": "storefront",
+    "prompt": "single modern cash register, pure white background, floating in void, alpha channel around object, retail point of sale terminal, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, cluttered background, multiple objects, receipts, counter, surface, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "display_shelf_001",
+    "category": "storefront",
+    "prompt": "single freestanding retail display shelf unit with multiple tiers, pure white background, floating in void, alpha channel around object, empty store shelving, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, products on shelf, cluttered background, price tags, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "traffic_light_001",
+    "category": "street_furniture",
+    "prompt": "single traffic light signal mounted on pole, pure white background, floating in void, alpha channel around object, urban traffic control device with red yellow green lights, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, road scene, multiple objects, street background, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "fire_hydrant_001",
+    "category": "street_furniture",
+    "prompt": "single red fire hydrant, pure white background, floating in void, alpha channel around object, american style cast iron fire hydrant, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, street scene, multiple objects, curb, road, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "crosswalk_signal_001",
+    "category": "street_furniture",
+    "prompt": "single pedestrian crosswalk signal post with walk indicator lights, pure white background, floating in void, alpha channel around object, urban crosswalk control box on pole, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, road scene, multiple objects, street background, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "bus_stop_shelter_001",
+    "category": "street_furniture",
+    "prompt": "single modern bus stop shelter with glass panels and built-in bench, pure white background, floating in void, alpha channel around object, transit shelter structure, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, street scene, advertisements, signage, road, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  },
+  {
+    "id": "mailbox_001",
+    "category": "street_furniture",
+    "prompt": "single blue USPS collection mailbox, pure white background, floating in void, alpha channel around object, american street mail drop box, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, street scene, multiple objects, labels, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft"
+  }
+]

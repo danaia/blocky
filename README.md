@@ -84,6 +84,15 @@ python scripts/run_batch.py manifest/city_objects.json \
     --hunyuan-url http://localhost:8081
 ```
 
+**Optional post-process: decimate GLBs for in-game assets**
+```bash
+blender --background --python scripts/decimate_glbs.py -- \
+  outputs/meshes/street_furniture/*.glb
+```
+
+This step requires Blender because `scripts/decimate_glbs.py` uses Blender's `bpy` API.
+LM Studio is not used by the decimation script.
+
 ---
 
 ## Output Structure

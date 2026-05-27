@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_pipeline.sh — Two-phase pipeline: images first (ComfyUI), then meshes (Hunyuan3D).
+# run_pipeline.sh — Three-phase pipeline: images, meshes, then Blender decimation.
 # ComfyUI is fully stopped and VRAM confirmed free before Hunyuan3D starts.
 #
 # Usage:
@@ -13,6 +13,9 @@ BLOCKY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMFYUI_DIR="/home/dana/workspace/ComfyUI"
 HUNYUAN_DIR="/home/dana/workspace/hunyuan3d-2.1"
 MANIFEST="${1:-manifest/test_3.json}"
+BLENDER_BIN="${BLENDER_BIN:-/usr/local/bin/blender}"
+DECIMATE_PRESET="${DECIMATE_PRESET:-game_ready}"
+DECIMATE_OUTPUT_ROOT="${DECIMATE_OUTPUT_ROOT:-in_game_assets}"
 
 COMFYUI_PORT=8188
 HUNYUAN_PORT=8081
@@ -124,6 +127,41 @@ wait_for_vram() {
             return 0
         fi
     done
+}
+
+run_blender_decimation() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "PHASE 3: Blender decimation"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [[ ! -x "$BLENDER_BIN" ]]; then
+        echo "ERROR: Blender not found at $BLENDER_BIN" >&2
+        exit 1
+    fi
+
+    local mesh_dir
+    local ran_any=0
+    shopt -s nullglob
+    for mesh_dir in "$BLOCKY_DIR"/outputs/meshes/*; do
+        [[ -d "$mesh_dir" ]] || continue
+        local category
+        category="$(basename "$mesh_dir")"
+        local glbs=("$mesh_dir"/*.glb)
+        [[ ${#glbs[@]} -gt 0 ]] || continue
+
+        ran_any=1
+        echo "Decimating category: $category"
+        "$BLENDER_BIN" --background --python "$BLOCKY_DIR/scripts/decimate_glbs.py" -- \
+            --preset "$DECIMATE_PRESET" \
+            --output-dir "$BLOCKY_DIR/$DECIMATE_OUTPUT_ROOT/$category" \
+            "${glbs[@]}"
+    done
+    shopt -u nullglob
+
+    if [[ "$ran_any" -eq 0 ]]; then
+        echo "No mesh GLBs found to decimate."
+    fi
 }
 
 # ===========================================================================
@@ -245,3 +283,5 @@ done
 
 echo ""
 echo "Pipeline complete."
+
+run_blender_decimation
