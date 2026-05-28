@@ -22,15 +22,15 @@
     "target_height_m": 0.9
   },
   {
-    "id": "streetlight_001",
-    "category": "street_furniture",
-    "prompt": "single modern city streetlight on tall pole, pure white background, floating in void, alpha channel around object, urban street light fixture, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
-    "negative_prompt": "text, watermark, people, background scene, multiple objects, cropped, partial view, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
+    "id": "cash_register_001",
+    "category": "storefront",
+    "prompt": "single modern cash register, pure white background, floating in void, alpha channel around object, retail point of sale terminal, game asset 3D model, clean product render, no ground, no floor, no base, no shadows",
+    "negative_prompt": "text, watermark, people, cluttered background, multiple objects, receipts, counter, surface, shadow, ground plane, floor plane, flat plane, base plate, shadow disc, circular shadow, shadow blob, ground shadow, plane geometry, infinite plane, reflective floor",
     "count": 1,
     "seed": null,
     "image_size": 1024,
     "mesh_quality": "draft",
-    "target_height_m": 8.0
+    "target_height_m": 0.3
   },
   {
     "id": "potted_plant_small_001",
