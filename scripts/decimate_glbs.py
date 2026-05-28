@@ -6,6 +6,8 @@ This script must be run via Blender because it depends on ``bpy``:
     blender --background --python scripts/decimate_glbs.py -- ...
 
 LM Studio is not used by this script.
+
+Output: one clean triangular mesh per input asset (no LOD bundling).
 """
 
 import argparse
@@ -20,67 +22,44 @@ from mathutils import Vector
 
 DEFAULT_OUTPUT_DIR = Path("in_game_assets/street_furniture")
 
-# Default cleanup + decimation settings.
-# Change these values here for the common case, or override them on the CLI.
-# Ratios are tuned for LOD-friendly exports that keep more silhouette detail.
-DEFAULT_DECIMATE_RATIO = 0.28
+# Default cleanup + decimation settings for tessellation base meshes.
+# Tessellation_base uses ratio 0.65 (keeps ~65% of original faces) so the
+# game engine's dynamic tessellation shader has enough edge flow to work with.
+DEFAULT_DECIMATE_RATIO = 0.65
 DEFAULT_MERGE_THRESHOLD = 0.001
 DEFAULT_FILL_HOLES_SIDES = 4
 DEFAULT_SMOOTH_ANGLE_DEG = 45.0
 
 DECIMATION_PRESETS = {
-    "aggressive": {
-        "lod_ratios": [1.0, 0.4, 0.22, 0.08],
-        "ratio": 0.22,
-        "merge_threshold": 0.001,
-        "fill_holes_sides": 4,
-        "smooth_angle_deg": 45.0,
-    },
-    "game_ready": {
-        "lod_ratios": [1.0, 0.5, DEFAULT_DECIMATE_RATIO, 0.12],
-        "ratio": DEFAULT_DECIMATE_RATIO,
+    # Tessellation base: high-density mesh with clean topology.
+    # The game engine shader will subdivide this further at runtime.
+    # Keep ratio >= 0.5 so edge flow and silhouette survive decimation.
+    "tessellation_base": {
+        "ratio": 0.65,
         "merge_threshold": DEFAULT_MERGE_THRESHOLD,
         "fill_holes_sides": DEFAULT_FILL_HOLES_SIDES,
         "smooth_angle_deg": DEFAULT_SMOOTH_ANGLE_DEG,
     },
-    "conservative": {
-        "lod_ratios": [1.0, 0.62, 0.38, 0.18],
-        "ratio": 0.38,
-        "merge_threshold": 0.001,
-        "fill_holes_sides": 4,
-        "smooth_angle_deg": 45.0,
+    # Game-ready: moderate decimation for static rendering (no tessellation).
+    "game_ready": {
+        "ratio": 0.28,
+        "merge_threshold": DEFAULT_MERGE_THRESHOLD,
+        "fill_holes_sides": DEFAULT_FILL_HOLES_SIDES,
+        "smooth_angle_deg": DEFAULT_SMOOTH_ANGLE_DEG,
     },
 }
-
-
-def parse_lod_ratios(raw_value: str) -> list[float]:
-    try:
-        values = [float(value.strip()) for value in raw_value.split(",") if value.strip()]
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Invalid LOD ratio list: {raw_value}") from exc
-    if not values:
-        raise argparse.ArgumentTypeError("LOD ratio list cannot be empty")
-    for value in values:
-        if value <= 0.0 or value > 1.0:
-            raise argparse.ArgumentTypeError("LOD ratios must be in the range (0.0, 1.0]")
-    return values
 
 
 def build_settings(args: argparse.Namespace) -> dict:
     settings = dict(DECIMATION_PRESETS[args.preset])
     if args.ratio is not None:
         settings["ratio"] = args.ratio
-        lod_ratios = list(settings["lod_ratios"])
-        lod_ratios[-1] = args.ratio
-        settings["lod_ratios"] = lod_ratios
     if args.merge_threshold is not None:
         settings["merge_threshold"] = args.merge_threshold
     if args.fill_holes_sides is not None:
         settings["fill_holes_sides"] = args.fill_holes_sides
     if args.smooth_angle_deg is not None:
         settings["smooth_angle_deg"] = args.smooth_angle_deg
-    if args.lod_ratios is not None:
-        settings["lod_ratios"] = args.lod_ratios
     return settings
 
 
@@ -111,17 +90,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--preset",
         choices=sorted(DECIMATION_PRESETS.keys()),
-        default="game_ready",
-        help="Named decimation preset to use before applying any explicit overrides",
+        default="tessellation_base",
+        help="Named decimation preset (default: tessellation_base for dynamic tessellation shaders)",
     )
-    parser.add_argument("--ratio", type=float, default=None, help="Decimate ratio override")
-    parser.add_argument(
-        "--lod-ratios",
-        type=parse_lod_ratios,
-        default=None,
-        dest="lod_ratios",
-        help="Comma-separated ratios for bundled LOD0, LOD1, ... meshes (example: 1.0,0.5,0.28)",
-    )
+    parser.add_argument("--ratio", type=float, default=None, help="Decimate ratio (1.0 = no decimation)")
     parser.add_argument("--merge-threshold", type=float, default=None, dest="merge_threshold")
     parser.add_argument("--fill-holes-sides", type=int, default=None, dest="fill_holes_sides")
     parser.add_argument("--smooth-angle-deg", type=float, default=None, dest="smooth_angle_deg")
@@ -208,67 +180,56 @@ def process_object(obj: bpy.types.Object, ratio: float, merge_threshold: float, 
     bpy.ops.mesh.normals_make_consistent(inside=False)
     if ratio < 1.0:
         bpy.ops.mesh.decimate(ratio=ratio)
+    bpy.ops.mesh.quads_convert_to_tris(quad_method="SHORTEST_DIAGONAL", ngon_method="BEAUTY")
     bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.shade_smooth_by_angle(angle=math.radians(smooth_angle_deg))
 
     return start_faces, len(obj.data.polygons)
 
 
-def make_object_single_user(obj: bpy.types.Object) -> bpy.types.Object:
-    duplicate = obj.copy()
-    duplicate.data = obj.data.copy()
-    duplicate.animation_data_clear()
-    duplicate.parent = None
-    duplicate.matrix_world = obj.matrix_world.copy()
-    bpy.context.scene.collection.objects.link(duplicate)
-    return duplicate
+def join_mesh_objects(mesh_objects: list[bpy.types.Object]) -> bpy.types.Object:
+    ensure_object_mode()
 
-
-def lod_base_name(asset_id: str, obj: bpy.types.Object, index: int, mesh_count: int) -> str:
-    if mesh_count == 1:
-        return asset_id
-    return f"{asset_id}_part{index:02d}"
-
-
-def build_lod_variants(
-    asset_id: str,
-    mesh_objects: list[bpy.types.Object],
-    lod_ratios: list[float],
-    merge_threshold: float,
-    fill_holes_sides: int,
-    smooth_angle_deg: float,
-) -> list[dict]:
-    lod_stats = []
-    variant_objects = []
-
-    for mesh_index, obj in enumerate(mesh_objects):
-        base_name = lod_base_name(asset_id, obj, mesh_index, len(mesh_objects))
-        for lod_level, ratio in enumerate(lod_ratios):
-            lod_obj = make_object_single_user(obj)
-            lod_obj.name = f"{base_name}_LOD{lod_level}"
-            lod_obj.data.name = lod_obj.name
-            start_faces, final_faces = process_object(
-                lod_obj,
-                ratio=ratio,
-                merge_threshold=merge_threshold,
-                fill_holes_sides=fill_holes_sides,
-                smooth_angle_deg=smooth_angle_deg,
-            )
-            lod_stats.append(
-                {
-                    "name": lod_obj.name,
-                    "ratio": ratio,
-                    "start_faces": start_faces,
-                    "final_faces": final_faces,
-                }
-            )
-            variant_objects.append(lod_obj)
+    if len(mesh_objects) == 1:
+        return mesh_objects[0]
 
     bpy.ops.object.select_all(action="DESELECT")
     for obj in mesh_objects:
         obj.select_set(True)
-    bpy.ops.object.delete(use_global=False)
-    return lod_stats
+    bpy.context.view_layer.objects.active = mesh_objects[0]
+    bpy.ops.object.join()
+    return bpy.context.active_object
+
+
+def export_single_mesh(
+    asset_id: str,
+    mesh_objects: list[bpy.types.Object],
+    output_path: Path,
+    ratio: float,
+    merge_threshold: float,
+    fill_holes_sides: int,
+    smooth_angle_deg: float,
+) -> dict:
+    """Join, optimize, and export one single mesh GLB."""
+    target = join_mesh_objects(mesh_objects)
+
+    start_faces, final_faces = process_object(
+        target,
+        ratio=ratio,
+        merge_threshold=merge_threshold,
+        fill_holes_sides=fill_holes_sides,
+        smooth_angle_deg=smooth_angle_deg,
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    export_glb(output_path)
+
+    return {
+        "name": asset_id,
+        "start_faces": start_faces,
+        "final_faces": final_faces,
+    }
 
 
 def export_glb(output_path: Path) -> None:
@@ -324,23 +285,22 @@ def main() -> None:
                 target_height_m,
             )
 
-        lod_stats = build_lod_variants(
-            asset_id=asset_id,
-            mesh_objects=mesh_objects,
-            lod_ratios=settings["lod_ratios"],
+        mesh_stats = export_single_mesh(
+            asset_id,
+            mesh_objects,
+            output_dir / glb_path.name,
+            ratio=settings["ratio"],
             merge_threshold=settings["merge_threshold"],
             fill_holes_sides=settings["fill_holes_sides"],
             smooth_angle_deg=settings["smooth_angle_deg"],
         )
 
-        output_path = output_dir / glb_path.name
-        export_glb(output_path)
         results.append(
             {
                 "input": str(glb_path),
-                "output": str(output_path),
-                "lod_ratios": settings["lod_ratios"],
-                "lod_stats": lod_stats,
+                "output": str(output_dir / glb_path.name),
+                "ratio": settings["ratio"],
+                "mesh_stats": [mesh_stats],
                 "target_height_m": target_height_m,
                 "original_height_m": original_height_m,
                 "scale_factor": scale_factor,
