@@ -137,7 +137,7 @@ HUNYUAN_PIP="${HUNYUAN_DIR}/.venv/bin/pip"
 
 echo "  Installing Hunyuan3D Python dependencies..."
 "${HUNYUAN_PYTHON}" -m pip install -q --upgrade pip wheel setuptools
-"${HUNYUAN_PIP}" install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+"${HUNYUAN_PIP}" install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
 "${HUNYUAN_PIP}" install numpy==1.24.4 cython==3.0.12
 # Hunyuan includes packages that try to bootstrap torch/numpy inside isolated
 # build envs. Reuse the venv copies above so installs stay visible and resumable.
