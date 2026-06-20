@@ -9,6 +9,8 @@ URL="http://${HOST}:${PORT}/index.html"
 COMFYUI_HOST="${COMFYUI_HOST:-127.0.0.1}"
 COMFYUI_PORT="${COMFYUI_PORT:-8188}"
 BLOCKY_OPEN_BROWSER="${BLOCKY_OPEN_BROWSER:-1}"
+HUNYUAN_PORT="${HUNYUAN_PORT:-8081}"
+BLOCKY_KILL_PORTS="${BLOCKY_KILL_PORTS:-${PORT} ${COMFYUI_PORT} ${HUNYUAN_PORT}}"
 
 if [[ -z "${COMFYUI_DIR:-}" ]]; then
     if [[ -d "/home/dana/comfy/ComfyUI" ]]; then
@@ -27,6 +29,29 @@ if [[ ! -x ".venv/bin/python" ]]; then
     echo "ERROR: .venv/bin/python not found. Create the Blocky venv first." >&2
     exit 1
 fi
+
+kill_port() {
+    local port="$1"
+    if command -v fuser >/dev/null 2>&1; then
+        if fuser -s "${port}/tcp" 2>/dev/null; then
+            echo "Clearing stale process on port ${port}"
+            fuser -k "${port}/tcp" >/dev/null 2>&1 || true
+            sleep 0.5
+        fi
+    elif command -v lsof >/dev/null 2>&1; then
+        local pids
+        pids="$(lsof -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+        if [[ -n "$pids" ]]; then
+            echo "Clearing stale process on port ${port}"
+            kill $pids 2>/dev/null || true
+            sleep 0.5
+        fi
+    fi
+}
+
+for stale_port in $BLOCKY_KILL_PORTS; do
+    kill_port "$stale_port"
+done
 
 start_comfyui() {
     local comfy_url="http://${COMFYUI_HOST}:${COMFYUI_PORT}"

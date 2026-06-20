@@ -141,6 +141,8 @@ def update_asset_status(asset_id: str, status: str, **kwargs) -> None:
         }
     index[asset_id]["status"] = status
     index[asset_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if status in {"image_complete", "mesh_complete"} and "error" not in kwargs:
+        index[asset_id]["error"] = None
     for key, value in kwargs.items():
         index[asset_id][key] = value
     save_index(index)

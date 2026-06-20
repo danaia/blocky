@@ -13,6 +13,7 @@ import json
 import os
 import re
 import signal
+import shlex
 import subprocess
 import threading
 import time
@@ -50,6 +51,7 @@ CANCEL_PORTS = [8188, 8081]
 HUNYUAN_PROCESS: subprocess.Popen[Any] | None = None
 ACTIVE_JOB_STATUSES = {"preparing", "running", "stopping"}
 VRAM_FREE_THRESHOLD_MIB = 20000
+BLENDER_BIN = os.environ.get("BLENDER_BIN", "/usr/local/bin/blender")
 
 
 def rel_path(path: Path) -> str:
@@ -63,6 +65,13 @@ def safe_manifest_path(name: str) -> Path:
     path = (MANIFEST_DIR / name).resolve()
     if MANIFEST_DIR.resolve() not in path.parents or path.suffix != ".json":
         raise ValueError("Manifest must be a JSON file inside manifest/")
+    return path
+
+
+def safe_project_path(relative_path: str) -> Path:
+    path = (ROOT / relative_path).resolve()
+    if ROOT.resolve() != path and ROOT.resolve() not in path.parents:
+        raise ValueError(f"Unsafe path: {relative_path}")
     return path
 
 
@@ -222,6 +231,14 @@ def load_index() -> dict[str, dict[str, Any]]:
     return entries
 
 
+def save_index_entries(entries: dict[str, dict[str, Any]]) -> None:
+    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with INDEX_PATH.open("w") as f:
+        for asset_id in sorted(entries):
+            json.dump(entries[asset_id], f)
+            f.write("\n")
+
+
 def manifest_assets(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     assets = []
     for item in items:
@@ -240,6 +257,64 @@ def manifest_assets(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return assets
 
 
+def delete_asset_outputs(assets: list[dict[str, Any]]) -> list[str]:
+    deleted: list[str] = []
+    for asset in assets:
+        for key in ("image_path", "mesh_path", "game_path"):
+            path = safe_project_path(asset[key])
+            if path.exists() and path.is_file():
+                path.unlink()
+                deleted.append(rel_path(path))
+        metadata_path = safe_project_path(asset["mesh_path"]).with_suffix(".json")
+        if metadata_path.exists() and metadata_path.is_file():
+            metadata_path.unlink()
+            deleted.append(rel_path(metadata_path))
+    return deleted
+
+
+def remove_index_asset_ids(asset_ids: set[str]) -> None:
+    index = load_index()
+    for asset_id in asset_ids:
+        index.pop(asset_id, None)
+    save_index_entries(index)
+
+
+def delete_manifest_file(name: str, cleanup_assets: bool = False) -> dict[str, Any]:
+    path = safe_manifest_path(name)
+    if not path.exists():
+        raise ValueError("Manifest not found")
+    deleted_assets: list[str] = []
+    asset_ids: set[str] = set()
+    if cleanup_assets:
+        items = normalize_manifest_items(json.loads(path.read_text()))
+        assets = manifest_assets(items)
+        deleted_assets = delete_asset_outputs(assets)
+        asset_ids = {asset["asset_id"] for asset in assets}
+        remove_index_asset_ids(asset_ids)
+    path.unlink()
+    return {"ok": True, "deleted": rel_path(path), "deleted_assets": deleted_assets, "asset_ids": sorted(asset_ids)}
+
+
+def delete_manifest_item(name: str, index: int, cleanup_assets: bool = True) -> dict[str, Any]:
+    path = safe_manifest_path(name)
+    items = normalize_manifest_items(json.loads(path.read_text()))
+    if index < 0 or index >= len(items):
+        raise ValueError("Manifest item index is out of range")
+    removed = items.pop(index)
+    assets = manifest_assets([removed])
+    deleted_assets = delete_asset_outputs(assets) if cleanup_assets else []
+    remove_index_asset_ids({asset["asset_id"] for asset in assets})
+    path.write_text(json.dumps(items, indent=2).rstrip() + "\n")
+    return {
+        "ok": True,
+        "name": path.name,
+        "entries": items,
+        "removed": removed,
+        "deleted_assets": deleted_assets,
+        "asset_ids": [asset["asset_id"] for asset in assets],
+    }
+
+
 def read_manifest_summary(path: Path, index: dict[str, dict[str, Any]]) -> dict[str, Any]:
     try:
         items = json.loads(path.read_text())
@@ -247,13 +322,14 @@ def read_manifest_summary(path: Path, index: dict[str, dict[str, Any]]) -> dict[
         enriched_assets = []
         for asset in assets:
             tracked = index.get(asset["asset_id"], {})
+            status = tracked.get("status", "pending")
             enriched_assets.append(
                 {
                     **asset,
-                    "status": tracked.get("status", "pending"),
+                    "status": status,
                     "vertex_count": tracked.get("vertex_count"),
                     "file_size_bytes": tracked.get("file_size_bytes"),
-                    "error": tracked.get("error"),
+                    "error": tracked.get("error") if status == "failed" else None,
                     "image_exists": (ROOT / asset["image_path"]).exists(),
                     "mesh_exists": (ROOT / asset["mesh_path"]).exists(),
                     "game_exists": (ROOT / asset["game_path"]).exists(),
@@ -353,7 +429,7 @@ def current_jobs() -> list[dict[str, Any]]:
     with JOBS_LOCK:
         for job in JOBS.values():
             proc = job.get("process")
-            if proc and job["status"] == "running":
+            if proc and job["status"] == "running" and not job.get("managed_by_worker"):
                 code = proc.poll()
                 if code is not None:
                     job["status"] = "succeeded" if code == 0 else "failed"
@@ -426,6 +502,59 @@ def run_command_for(mode: str, manifest_name: str, asset_ids: list[str] | None =
     raise ValueError(f"Unknown mode: {mode}")
 
 
+def mesh_paths_by_category(manifest_name: str, asset_ids: list[str]) -> dict[str, list[Path]]:
+    path = safe_manifest_path(manifest_name)
+    items = normalize_manifest_items(json.loads(path.read_text()))
+    selected = set(asset_ids)
+    grouped: dict[str, list[Path]] = {}
+    for asset in manifest_assets(items):
+        if selected and asset["asset_id"] not in selected:
+            continue
+        mesh_path = safe_project_path(asset["mesh_path"])
+        if mesh_path.exists():
+            grouped.setdefault(str(asset["category"]), []).append(mesh_path)
+    return grouped
+
+
+def decimate_selected_game_assets(job: dict[str, Any]) -> int:
+    grouped = mesh_paths_by_category(job["manifest"], job.get("asset_ids", []))
+    if not grouped:
+        _job_log(job, "No generated mesh GLBs found for game asset export.")
+        return 0
+    manifest_path = f"manifest/{job['manifest']}"
+    total = sum(len(paths) for paths in grouped.values())
+    _job_log(job, f"Creating game-ready assets for {total} mesh GLB(s)...")
+    for category, paths in sorted(grouped.items()):
+        output_dir = ROOT / "in_game_assets" / category
+        output_dir.mkdir(parents=True, exist_ok=True)
+        command = [
+            BLENDER_BIN,
+            "--background",
+            "--python",
+            "scripts/decimate_glbs.py",
+            "--",
+            "--manifest",
+            manifest_path,
+            "--preset",
+            "game_ready",
+            "--output-dir",
+            str(output_dir),
+            *[str(path) for path in paths],
+        ]
+        _job_log(job, f"$ {' '.join(shlex.quote(part) for part in command)}")
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            stdout=job["log_file"],
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return result.returncode
+    return 0
+
+
 def stop_comfyui() -> dict[str, Any]:
     was_running = service_status("http://localhost:8188/system_stats", timeout=1.0)
     killed_process = _pkill_pattern("ComfyUI/main.py")
@@ -486,8 +615,9 @@ def _mesh_prep_cancelled(job_id: str) -> bool:
         job = JOBS.get(job_id)
         if not job:
             return True
-        if job["status"] != "preparing":
+        if job["status"] in {"cancelled", "stopping"}:
             _job_log(job, "Mesh preparation cancelled before launch.")
+            _mark_job_cancelled(job)
             return True
         return False
 
@@ -560,6 +690,40 @@ def _mesh_job_worker(job_id: str) -> None:
             _set_step(job, "mesh_batch", "running", "Running selected assets through Hunyuan3D")
             _job_log(job, f"{detail}. Launching mesh batch.")
             _launch_job_process(job)
+            proc = job["process"]
+        mesh_code = proc.wait()
+        if _mesh_prep_cancelled(job_id):
+            return
+        with JOBS_LOCK:
+            job = JOBS[job_id]
+            job["returncode"] = mesh_code
+            _set_step(
+                job,
+                "mesh_batch",
+                "done" if mesh_code == 0 else "failed",
+                "Mesh batch complete" if mesh_code == 0 else f"Mesh batch failed with exit code {mesh_code}",
+            )
+            if mesh_code != 0:
+                job["status"] = "failed"
+                job["ended_at"] = time.time()
+                return
+            _set_step(job, "game_assets", "running", "Creating game-ready in_game_assets GLBs")
+            _job_log(job, "Mesh batch complete. Creating game-ready assets...")
+
+        with JOBS_LOCK:
+            job = JOBS[job_id]
+        decimate_code = decimate_selected_game_assets(job)
+        with JOBS_LOCK:
+            job = JOBS[job_id]
+            job["returncode"] = decimate_code
+            _set_step(
+                job,
+                "game_assets",
+                "done" if decimate_code == 0 else "failed",
+                "Game assets written to in_game_assets" if decimate_code == 0 else f"Game asset export failed with exit code {decimate_code}",
+            )
+            job["status"] = "succeeded" if decimate_code == 0 else "failed"
+            job["ended_at"] = time.time()
     except Exception as exc:
         with JOBS_LOCK:
             job = JOBS.get(job_id)
@@ -602,12 +766,14 @@ def start_job(manifest_name: str, mode: str, asset_ids: Any = None) -> dict[str,
             "process": None,
             "steps": [],
             "log_file": log_file,
+            "managed_by_worker": mode == "meshes",
         }
         if mode == "meshes":
             _set_step(job, "stop_comfyui", "pending", "Queued")
             _set_step(job, "wait_vram", "pending", f"Need >{VRAM_FREE_THRESHOLD_MIB} MiB free")
             _set_step(job, "start_hunyuan", "pending", "Queued")
             _set_step(job, "mesh_batch", "pending", f"{len(selected_asset_ids)} selected asset(s)")
+            _set_step(job, "game_assets", "pending", "Create in-game GLBs after mesh batch")
             _job_log(job, "Mesh job queued. The UI will stop ComfyUI before starting Hunyuan3D.")
         else:
             _launch_job_process(job)
@@ -677,7 +843,11 @@ def cancel_all_processes() -> dict[str, Any]:
     with JOBS_LOCK:
         for job in JOBS.values():
             proc = job.get("process")
-            if proc and job["status"] in {"running", "stopping"}:
+            if job["status"] in {"preparing", "running", "stopping"}:
+                if not proc:
+                    cancelled_jobs.append(job["id"])
+                    _mark_job_cancelled(job)
+                    continue
                 if _terminate_process_group(proc):
                     cancelled_jobs.append(job["id"])
                 _mark_job_cancelled(job)
@@ -755,6 +925,18 @@ class BlockyHandler(SimpleHTTPRequestHandler):
             return
         return super().do_GET()
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/api/manifest":
+                query = parse_qs(parsed.query)
+                cleanup = query.get("cleanup", ["1"])[0] != "0"
+                self.send_json(delete_manifest_file(query.get("name", [""])[0], cleanup_assets=cleanup))
+                return
+            self.send_error_json("Unknown endpoint", status=HTTPStatus.NOT_FOUND)
+        except Exception as exc:
+            self.send_error_json(str(exc))
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
@@ -770,6 +952,14 @@ class BlockyHandler(SimpleHTTPRequestHandler):
                     content = json.dumps(entries, indent=2)
                 path.write_text(content.rstrip() + "\n")
                 self.send_json({"ok": True, "name": path.name})
+                return
+            if parsed.path == "/api/manifest/item/delete":
+                result = delete_manifest_item(
+                    payload.get("name", ""),
+                    int(payload.get("index", -1)),
+                    cleanup_assets=bool(payload.get("cleanup_assets", True)),
+                )
+                self.send_json(result)
                 return
             if parsed.path == "/api/ai/manifest-entries":
                 entries = generate_manifest_entries_with_openai(payload)

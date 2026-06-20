@@ -7,11 +7,54 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <style>
-      html { color-scheme: light; }
+      html { color-scheme: dark; }
       body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       button, textarea, input, select { font: inherit; }
       .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
-      .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+      .scrollbar-thin::-webkit-scrollbar-thumb { background: #52525b; border-radius: 999px; }
+      body,
+      .bg-white,
+      .bg-zinc-50,
+      .bg-zinc-100 { background: #0a0a0a !important; color: #f4f4f5 !important; }
+      header,
+      section,
+      aside,
+      .border,
+      .border-t,
+      .border-b,
+      .border-r { border-color: #27272a !important; }
+      .bg-white,
+      section.border,
+      .border.bg-white { background: #18181b !important; }
+      .bg-zinc-50 { background: #111113 !important; }
+      .bg-zinc-100 { background: #202024 !important; }
+      .bg-zinc-950 { background: #050505 !important; }
+      .bg-zinc-200 { background: #3f3f46 !important; }
+      .text-zinc-950,
+      .text-zinc-700 { color: #f4f4f5 !important; }
+      .text-zinc-500 { color: #a1a1aa !important; }
+      input,
+      textarea,
+      select {
+        background: #0f0f12 !important;
+        border-color: #3f3f46 !important;
+        color: #f4f4f5 !important;
+      }
+      input::placeholder,
+      textarea::placeholder { color: #71717a !important; }
+      button.border,
+      .rounded.border { background: #18181b; border-color: #3f3f46 !important; color: #f4f4f5; }
+      button:hover,
+      .hover\:bg-zinc-50:hover,
+      .hover\:bg-zinc-800:hover { background: #27272a !important; }
+      .manifestBtn:hover,
+      .jobSelect:hover { background: #202024 !important; }
+      .divide-zinc-200 > :not([hidden]) ~ :not([hidden]) { border-color: #27272a !important; }
+      .border-red-300 { border-color: #7f1d1d !important; }
+      .text-red-700,
+      .text-red-600 { color: #f87171 !important; }
+      .bg-red-50,
+      .hover\:bg-red-50:hover { background: #450a0a !important; }
     </style>
   </head>
   <body class="min-h-screen bg-zinc-100 text-zinc-950">
@@ -324,7 +367,7 @@
                 <button data-duplicate-entry="${index}" title="Duplicate" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
                   <i data-lucide="copy-plus" class="h-4 w-4"></i>
                 </button>
-                <button data-remove-entry="${index}" title="Remove" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                <button data-remove-entry="${index}" title="Remove and delete generated files" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
                   <i data-lucide="trash-2" class="h-4 w-4"></i>
                 </button>
               </div>
@@ -377,12 +420,7 @@
           });
         });
         document.querySelectorAll('[data-remove-entry]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            state.manifestEntries.splice(Number(btn.dataset.removeEntry), 1);
-            if (!state.manifestEntries.length) state.manifestEntries.push(defaultEntry());
-            renderEntries();
-            renderImageJobState();
-          });
+          btn.addEventListener('click', () => deleteEntry(Number(btn.dataset.removeEntry)));
         });
         document.querySelectorAll('[data-duplicate-entry]').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -402,23 +440,30 @@
           const active = m.name === state.selectedManifest;
           const pct = m.asset_count ? Math.round((m.mesh_complete / m.asset_count) * 100) : 0;
           return `
-            <button data-manifest="${m.name}" class="manifestBtn block w-full border-b border-zinc-200 px-3 py-3 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
-              <div class="flex items-center justify-between gap-2">
-                <span class="truncate text-sm font-medium">${m.name}</span>
-                <span class="text-xs text-zinc-500">${pct}%</span>
-              </div>
-              <div class="mt-1 grid grid-cols-4 gap-1 text-[11px] text-zinc-500">
-                <span>${m.asset_count} assets</span>
-                <span>${m.mesh_complete} mesh</span>
-                <span>${m.image_complete} image</span>
-                <span>${m.failed} fail</span>
-              </div>
-              <div class="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200">
-                <div class="h-full bg-zinc-950" style="width:${pct}%"></div>
-              </div>
-            </button>`;
+            <div class="flex border-b border-zinc-200 ${active ? 'bg-zinc-100' : ''}">
+              <button data-manifest="${m.name}" class="manifestBtn min-w-0 flex-1 px-3 py-3 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-sm font-medium">${m.name}</span>
+                  <span class="text-xs text-zinc-500">${pct}%</span>
+                </div>
+                <div class="mt-1 grid grid-cols-4 gap-1 text-[11px] text-zinc-500">
+                  <span>${m.asset_count} assets</span>
+                  <span>${m.mesh_complete} mesh</span>
+                  <span>${m.image_complete} image</span>
+                  <span>${m.failed} fail</span>
+                </div>
+                <div class="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200">
+                  <div class="h-full bg-zinc-950" style="width:${pct}%"></div>
+                </div>
+              </button>
+              <button data-delete-manifest="${m.name}" title="Delete manifest and generated files" class="grid w-10 shrink-0 place-items-center border-l border-zinc-200 text-red-600 hover:bg-red-50">
+                <i data-lucide="trash-2" class="h-4 w-4"></i>
+              </button>
+            </div>`;
         }).join('');
         document.querySelectorAll('.manifestBtn').forEach((btn) => btn.addEventListener('click', () => loadManifest(btn.dataset.manifest)));
+        document.querySelectorAll('[data-delete-manifest]').forEach((btn) => btn.addEventListener('click', () => deleteManifest(btn.dataset.deleteManifest)));
+        lucide.createIcons();
       }
 
       function renderJobs() {
@@ -522,6 +567,44 @@
         state.selectedManifest = name;
         await refresh();
         await loadManifest(name);
+      }
+
+      async function deleteEntry(index) {
+        if (!state.selectedManifest || $('manifestName').value.trim() !== state.selectedManifest) {
+          state.manifestEntries.splice(index, 1);
+          if (!state.manifestEntries.length) state.manifestEntries.push(defaultEntry());
+          renderEntries();
+          renderImageJobState();
+          return;
+        }
+        const entry = state.manifestEntries[index];
+        const confirmed = confirm(`Remove ${entry?.id || 'this model type'} and delete its generated images, meshes, and in-game assets?`);
+        if (!confirmed) return;
+        const result = await api('/api/manifest/item/delete', {
+          method: 'POST',
+          body: JSON.stringify({ name: state.selectedManifest, index, cleanup_assets: true })
+        });
+        setEntries(result.entries || []);
+        state.selectedImageIds.clear();
+        await refresh();
+        await loadManifest(state.selectedManifest);
+      }
+
+      async function deleteManifest(name) {
+        const confirmed = confirm(`Delete ${name} from manifest/ and remove its generated files?`);
+        if (!confirmed) return;
+        await api(`/api/manifest?name=${encodeURIComponent(name)}&cleanup=1`, { method: 'DELETE' });
+        if (state.selectedManifest === name) {
+          state.selectedManifest = null;
+          state.manifestEntries = [];
+          $('manifestName').value = '';
+          $('editorTitle').textContent = 'Select a manifest';
+          $('editorMeta').textContent = 'No file loaded';
+          $('entryList').innerHTML = '';
+          state.selectedImageIds.clear();
+        }
+        await refresh();
+        if (state.selectedManifest) await loadManifest(state.selectedManifest);
       }
 
       async function generateAiEntries() {
