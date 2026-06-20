@@ -486,10 +486,21 @@ def main() -> None:
     parser.add_argument("--embedded-jpeg-quality", type=int, default=EMBEDDED_JPEG_QUALITY,
                         dest="embedded_jpeg_quality",
                         help=f"JPEG quality for opaque embedded GLB textures (default: {EMBEDDED_JPEG_QUALITY})")
+    parser.add_argument("--asset-id", action="append", default=[], dest="asset_ids",
+                        help="Limit work to a specific generated asset id. Can be passed more than once.")
     args = parser.parse_args()
 
     items = load_manifest(args.manifest)
-    total = sum(item["count"] for item in items)
+    selected_asset_ids = set(args.asset_ids)
+    manifest_asset_ids = {
+        f"{item['id']}_{v:03d}"
+        for item in items
+        for v in range(1, item["count"] + 1)
+    }
+    unknown_asset_ids = selected_asset_ids - manifest_asset_ids
+    if unknown_asset_ids:
+        raise ValueError(f"Unknown asset ids for manifest: {sorted(unknown_asset_ids)}")
+    total = len(selected_asset_ids) if selected_asset_ids else sum(item["count"] for item in items)
 
     print(f"\n{'='*60}")
     print("BLOCKY — Manifest → Image → GLB Batch Pipeline")
@@ -497,6 +508,8 @@ def main() -> None:
     print(f"  Object types: {len(items)}")
     print(f"  Total assets: {total}")
     print(f"  Phase:        {args.phase}")
+    if selected_asset_ids:
+        print(f"  Selected ids: {', '.join(sorted(selected_asset_ids))}")
     if args.phase in ("images", "all"):
         print(f"  ComfyUI:      {args.comfyui_url}")
     if args.phase in ("meshes", "all"):
@@ -509,6 +522,8 @@ def main() -> None:
         for item in items:
             for v in range(1, item["count"] + 1):
                 asset_id = f"{item['id']}_{v:03d}"
+                if selected_asset_ids and asset_id not in selected_asset_ids:
+                    continue
                 cur = index.get(asset_id, {}).get("status", "pending")
                 seed = item["seed"] if item["seed"] is not None else derive_seed(asset_id)
                 print(f"  {asset_id:<44}  status={cur:<15}  seed={seed}")
@@ -534,7 +549,12 @@ def main() -> None:
     done_meshes = 0
     consecutive_stall_failures = 0
 
-    all_assets = [(item, v) for item in items for v in range(1, item["count"] + 1)]
+    all_assets = [
+        (item, v)
+        for item in items
+        for v in range(1, item["count"] + 1)
+        if not selected_asset_ids or f"{item['id']}_{v:03d}" in selected_asset_ids
+    ]
     iterator = tqdm(all_assets, unit="asset") if HAS_TQDM else all_assets
 
     for item, v in iterator:

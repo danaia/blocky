@@ -24,7 +24,7 @@
             </div>
             <div>
               <h1 class="text-lg font-semibold leading-tight">Blocky Control</h1>
-              <p class="text-xs text-zinc-500">Manifest to PNG, GLB, and game-ready assets</p>
+              <p class="text-xs text-zinc-500">Generate image candidates, then promote selected images to 3D</p>
             </div>
           </div>
           <div class="flex items-center gap-2 text-sm">
@@ -77,14 +77,11 @@
               <button data-mode="dry-run" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
                 <i data-lucide="list-checks" class="h-4 w-4"></i> Dry Run
               </button>
-              <button data-mode="pipeline" class="jobBtn inline-flex h-9 items-center gap-2 rounded bg-zinc-950 px-3 text-white hover:bg-zinc-800">
-                <i data-lucide="play" class="h-4 w-4"></i> Run Pipeline
+              <button id="imagesBtn" data-mode="images" title="Requires ComfyUI already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded bg-zinc-950 px-3 text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">
+                <i data-lucide="image" class="h-4 w-4"></i> Generate Images
               </button>
-              <button id="imagesBtn" data-mode="images" title="Requires ComfyUI already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40">
-                <i data-lucide="image" class="h-4 w-4"></i> Images
-              </button>
-              <button id="meshesBtn" data-mode="meshes" title="Requires Hunyuan already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40">
-                <i data-lucide="cuboid" class="h-4 w-4"></i> Meshes
+              <button id="reviewImagesBtn" title="Review generated images" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="layout-grid" class="h-4 w-4"></i> Review Images
               </button>
             </div>
           </div>
@@ -92,25 +89,6 @@
 
         <section class="col-span-12 lg:col-span-4">
           <div class="grid gap-4">
-            <div class="border border-zinc-300 bg-white">
-              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
-                <h2 class="text-sm font-semibold">Assets</h2>
-                <span id="assetSummary" class="text-xs text-zinc-500"></span>
-              </div>
-              <div class="max-h-72 overflow-auto scrollbar-thin">
-                <table class="w-full text-left text-xs">
-                  <thead class="sticky top-0 bg-zinc-50 text-zinc-500">
-                    <tr>
-                      <th class="px-3 py-2 font-medium">Asset</th>
-                      <th class="px-3 py-2 font-medium">Status</th>
-                      <th class="px-3 py-2 font-medium">Verts</th>
-                    </tr>
-                  </thead>
-                  <tbody id="assetRows" class="divide-y divide-zinc-200"></tbody>
-                </table>
-              </div>
-            </div>
-
             <div class="border border-zinc-300 bg-white">
               <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
                 <h2 class="text-sm font-semibold">Jobs</h2>
@@ -124,20 +102,85 @@
             <div class="border border-zinc-300 bg-white">
               <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
                 <h2 class="text-sm font-semibold">Log</h2>
-                <span id="logTitle" class="text-xs text-zinc-500">No job selected</span>
+                <div class="flex items-center gap-2">
+                  <span id="logTitle" class="text-xs text-zinc-500">No job selected</span>
+                  <button id="copyLogBtn" title="Copy log" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                    <i data-lucide="copy" class="h-4 w-4"></i>
+                  </button>
+                </div>
               </div>
-              <pre id="logPane" class="h-[calc(100vh-580px)] min-h-56 overflow-auto whitespace-pre-wrap bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100 scrollbar-thin"></pre>
+              <pre id="logPane" class="h-[calc(100vh-355px)] min-h-96 overflow-auto whitespace-pre-wrap bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100 scrollbar-thin"></pre>
             </div>
           </div>
         </section>
       </main>
     </div>
 
+    <div id="imageModal" class="fixed inset-0 z-50 hidden bg-zinc-950/70 p-3 sm:p-6">
+      <div class="mx-auto grid h-full max-w-[1500px] grid-rows-[auto_1fr] overflow-hidden border border-zinc-300 bg-white">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-300 px-3 py-2">
+          <div class="min-w-0">
+            <h2 id="imageModalTitle" class="truncate text-sm font-semibold">Image Review</h2>
+            <p id="imageModalMeta" class="text-xs text-zinc-500">Select generated images to send to 3D</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="selectAllImagesBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+              <i data-lucide="check-square" class="h-4 w-4"></i> Select All
+            </button>
+            <button id="clearImageSelectionBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+              <i data-lucide="square" class="h-4 w-4"></i> Clear
+            </button>
+            <button id="closeImageModalBtn" title="Close" class="grid h-9 w-9 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+              <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+          </div>
+        </div>
+        <div class="grid min-h-0 grid-cols-12">
+          <div class="col-span-12 min-h-0 border-b border-zinc-300 lg:col-span-8 lg:border-b-0 lg:border-r">
+            <div id="imageGrid" class="grid max-h-[45vh] grid-cols-2 gap-2 overflow-auto p-3 scrollbar-thin sm:grid-cols-3 md:grid-cols-4 lg:max-h-full xl:grid-cols-5"></div>
+          </div>
+          <aside class="col-span-12 grid min-h-0 grid-rows-[1fr_auto] lg:col-span-4">
+            <div class="min-h-0 overflow-auto p-3 scrollbar-thin">
+              <div id="imageDetail" class="grid gap-3"></div>
+            </div>
+            <div class="border-t border-zinc-300 p-3">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div id="selectedImageCount" class="text-sm font-semibold">0 selected</div>
+                  <div class="text-xs text-zinc-500">Checked images will run through Hunyuan3D</div>
+                </div>
+                <button id="sendSelectedImagesBtn" class="inline-flex h-10 items-center gap-2 rounded bg-zinc-950 px-4 text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <i data-lucide="cuboid" class="h-4 w-4"></i> Generate 3D
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
     <script>
-      const state = { manifests: [], index: [], jobs: [], selectedManifest: null, selectedJob: null };
+      const state = {
+        manifests: [],
+        index: [],
+        jobs: [],
+        selectedManifest: null,
+        selectedJob: null,
+        activeAssetId: null,
+        selectedImageIds: new Set(),
+        imageModalOpen: false,
+        services: { comfyui: false, hunyuan: false }
+      };
       const $ = (id) => document.getElementById(id);
       const statusClass = (ok) => ok ? 'bg-emerald-500' : 'bg-zinc-400';
       const fmtTime = (seconds) => seconds ? new Date(seconds * 1000).toLocaleTimeString() : '';
+      const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
 
       async function api(path, options = {}) {
         const res = await fetch(path, {
@@ -150,12 +193,30 @@
       }
 
       function renderServices(services) {
+        state.services = services;
         for (const [id, ok] of [['comfyStatus', services.comfyui], ['hunyuanStatus', services.hunyuan]]) {
           const el = $(id);
           el.querySelector('span').className = `h-2 w-2 rounded-full ${statusClass(ok)}`;
         }
         $('imagesBtn').disabled = !services.comfyui;
-        $('meshesBtn').disabled = !services.hunyuan;
+        renderImageSelectionState();
+      }
+
+      function currentManifest() {
+        return state.manifests.find((manifest) => manifest.name === state.selectedManifest) || null;
+      }
+
+      function currentAssets() {
+        return currentManifest()?.assets || [];
+      }
+
+      function imageUrl(asset) {
+        return `/${asset.image_path}?v=${encodeURIComponent(asset.status || '')}-${asset.image_exists ? 1 : 0}`;
+      }
+
+      function pruneSelectedImages() {
+        const validIds = new Set(currentAssets().filter((asset) => asset.image_exists).map((asset) => asset.asset_id));
+        state.selectedImageIds = new Set([...state.selectedImageIds].filter((assetId) => validIds.has(assetId)));
       }
 
       function renderManifests() {
@@ -182,19 +243,6 @@
         document.querySelectorAll('.manifestBtn').forEach((btn) => btn.addEventListener('click', () => loadManifest(btn.dataset.manifest)));
       }
 
-      function renderAssets() {
-        const manifest = state.manifests.find((item) => item.name === state.selectedManifest);
-        const rows = manifest?.assets || [];
-        $('assetSummary').textContent = `${rows.length} tracked`;
-        $('assetRows').innerHTML = rows.map((item) => `
-          <tr>
-            <td class="px-3 py-2 font-mono">${item.asset_id}</td>
-            <td class="px-3 py-2"><span class="rounded border border-zinc-300 px-1.5 py-0.5">${item.status}</span></td>
-            <td class="px-3 py-2 text-zinc-500">${item.vertex_count ?? ''}</td>
-          </tr>
-        `).join('') || '<tr><td class="px-3 py-4 text-zinc-500" colspan="3">No tracked assets yet</td></tr>';
-      }
-
       function renderJobs() {
         $('jobList').innerHTML = state.jobs.map((job) => {
           const active = job.id === state.selectedJob;
@@ -217,11 +265,12 @@
         state.jobs = data.jobs;
         if (!state.selectedManifest && state.manifests.length) state.selectedManifest = state.manifests[0].name;
         if (!state.selectedJob && state.jobs.length) state.selectedJob = state.jobs[0].id;
+        pruneSelectedImages();
         renderServices(data.services);
         renderManifests();
-        renderAssets();
         renderJobs();
         if (state.selectedJob) loadLog();
+        if (state.imageModalOpen) renderImageModal();
         lucide.createIcons();
       }
 
@@ -232,8 +281,11 @@
         $('manifestEditor').value = data.content;
         $('editorTitle').textContent = name;
         $('editorMeta').textContent = `${data.content.length.toLocaleString()} characters`;
+        pruneSelectedImages();
+        const firstImage = currentAssets().find((asset) => asset.image_exists);
+        state.activeAssetId = firstImage?.asset_id || null;
         renderManifests();
-        renderAssets();
+        if (state.imageModalOpen) renderImageModal();
       }
 
       async function saveManifest() {
@@ -247,23 +299,129 @@
         await loadManifest(name);
       }
 
-      async function startJob(mode) {
+      async function startJob(mode, assetIds = []) {
         if (mode === 'images' && $('imagesBtn').disabled) {
-          alert('Images-only requires ComfyUI to already be running. Use Run Pipeline to start services automatically.');
+          alert('Image generation requires ComfyUI to already be running.');
           return;
         }
-        if (mode === 'meshes' && $('meshesBtn').disabled) {
-          alert('Meshes-only requires Hunyuan to already be running. Use Run Pipeline to start services automatically.');
+        if (mode === 'meshes' && !state.services.hunyuan) {
+          alert('3D generation requires Hunyuan to already be running.');
+          return;
+        }
+        if (mode === 'meshes' && !assetIds.length) {
+          alert('Select at least one generated image first.');
           return;
         }
         const manifest = $('manifestName').value.trim() || state.selectedManifest;
         const job = await api('/api/jobs', {
           method: 'POST',
-          body: JSON.stringify({ manifest, mode })
+          body: JSON.stringify({ manifest, mode, asset_ids: assetIds })
         });
         state.selectedJob = job.id;
         await refresh();
         await loadLog();
+      }
+
+      function openImageModal() {
+        state.imageModalOpen = true;
+        const firstImage = currentAssets().find((asset) => asset.image_exists);
+        state.activeAssetId ||= firstImage?.asset_id || null;
+        $('imageModal').classList.remove('hidden');
+        renderImageModal();
+      }
+
+      function closeImageModal() {
+        state.imageModalOpen = false;
+        $('imageModal').classList.add('hidden');
+      }
+
+      function renderImageSelectionState() {
+        const selectedCount = state.selectedImageIds.size;
+        const countEl = $('selectedImageCount');
+        const sendBtn = $('sendSelectedImagesBtn');
+        if (countEl) countEl.textContent = `${selectedCount} selected`;
+        if (sendBtn) sendBtn.disabled = selectedCount === 0 || !state.services.hunyuan;
+      }
+
+      function renderImageModal() {
+        const manifest = currentManifest();
+        const assets = currentAssets();
+        const imageAssets = assets.filter((asset) => asset.image_exists);
+        const activeAsset = assets.find((asset) => asset.asset_id === state.activeAssetId) || imageAssets[0] || null;
+        if (activeAsset) state.activeAssetId = activeAsset.asset_id;
+
+        $('imageModalTitle').textContent = manifest ? `${manifest.name} Images` : 'Image Review';
+        $('imageModalMeta').textContent = `${imageAssets.length} generated of ${assets.length} candidates`;
+
+        $('imageGrid').innerHTML = imageAssets.map((asset) => {
+          const active = asset.asset_id === state.activeAssetId;
+          const checked = state.selectedImageIds.has(asset.asset_id);
+          return `
+            <div class="group border ${active ? 'border-zinc-950' : 'border-zinc-300'} bg-white">
+              <button data-asset="${escapeHtml(asset.asset_id)}" class="imageTile block w-full text-left">
+                <div class="aspect-square bg-zinc-100">
+                  <img src="${imageUrl(asset)}" alt="${escapeHtml(asset.asset_id)}" class="h-full w-full object-contain" loading="lazy" />
+                </div>
+                <div class="flex items-center justify-between gap-2 border-t border-zinc-200 px-2 py-1.5">
+                  <span class="truncate text-xs font-medium">${escapeHtml(asset.asset_id)}</span>
+                  <span class="text-[11px] text-zinc-500">${asset.mesh_exists ? '3D' : asset.status}</span>
+                </div>
+              </button>
+              <label class="flex h-9 items-center gap-2 border-t border-zinc-200 px-2 text-xs hover:bg-zinc-50">
+                <input type="checkbox" data-check="${escapeHtml(asset.asset_id)}" class="imageCheck h-4 w-4 rounded border-zinc-300" ${checked ? 'checked' : ''} />
+                Send to 3D
+              </label>
+            </div>`;
+        }).join('') || '<div class="col-span-full grid min-h-64 place-items-center border border-dashed border-zinc-300 text-sm text-zinc-500">No generated images yet</div>';
+
+        renderImageDetail(activeAsset);
+        renderImageSelectionState();
+        document.querySelectorAll('.imageTile').forEach((btn) => btn.addEventListener('click', () => {
+          state.activeAssetId = btn.dataset.asset;
+          renderImageModal();
+        }));
+        document.querySelectorAll('.imageCheck').forEach((box) => box.addEventListener('change', () => {
+          if (box.checked) state.selectedImageIds.add(box.dataset.check);
+          else state.selectedImageIds.delete(box.dataset.check);
+          renderImageSelectionState();
+          renderImageDetail(currentAssets().find((asset) => asset.asset_id === state.activeAssetId) || null);
+        }));
+        lucide.createIcons();
+      }
+
+      function renderImageDetail(asset) {
+        if (!asset) {
+          $('imageDetail').innerHTML = '<div class="grid min-h-64 place-items-center border border-dashed border-zinc-300 text-sm text-zinc-500">Generate images to review them here</div>';
+          return;
+        }
+        const checked = state.selectedImageIds.has(asset.asset_id);
+        $('imageDetail').innerHTML = `
+          <div class="bg-zinc-100">
+            <img src="${imageUrl(asset)}" alt="${escapeHtml(asset.asset_id)}" class="max-h-[58vh] w-full object-contain" />
+          </div>
+          <div class="grid gap-2 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate font-semibold">${escapeHtml(asset.asset_id)}</div>
+                <div class="text-xs text-zinc-500">${escapeHtml(asset.category)} / ${escapeHtml(asset.status)}</div>
+              </div>
+              <span class="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs">${asset.mesh_exists ? '3D ready' : 'Image only'}</span>
+            </div>
+            <label class="flex items-center gap-2 border border-zinc-300 px-3 py-2 hover:bg-zinc-50">
+              <input id="detailImageCheck" type="checkbox" class="h-4 w-4 rounded border-zinc-300" ${checked ? 'checked' : ''} />
+              Include this image in the next 3D job
+            </label>
+            <div class="grid gap-1 text-xs text-zinc-500">
+              <div class="truncate">Image: ${escapeHtml(asset.image_path)}</div>
+              <div class="truncate">Mesh: ${escapeHtml(asset.mesh_path)}</div>
+              ${asset.error ? `<div class="text-red-600">Error: ${escapeHtml(asset.error)}</div>` : ''}
+            </div>
+          </div>`;
+        $('detailImageCheck').addEventListener('change', (event) => {
+          if (event.target.checked) state.selectedImageIds.add(asset.asset_id);
+          else state.selectedImageIds.delete(asset.asset_id);
+          renderImageModal();
+        });
       }
 
       async function selectJob(id) {
@@ -286,9 +444,39 @@
         await refresh();
       }
 
+      async function copyLog() {
+        const text = $('logPane').textContent || '';
+        if (!text) return;
+        await navigator.clipboard.writeText(text);
+        const btn = $('copyLogBtn');
+        btn.innerHTML = '<i data-lucide="check" class="h-4 w-4"></i>';
+        lucide.createIcons();
+        setTimeout(() => {
+          btn.innerHTML = '<i data-lucide="copy" class="h-4 w-4"></i>';
+          lucide.createIcons();
+        }, 1200);
+      }
+
       $('refreshBtn').addEventListener('click', refresh);
       $('saveBtn').addEventListener('click', saveManifest);
       $('stopJobBtn').addEventListener('click', stopJob);
+      $('copyLogBtn').addEventListener('click', copyLog);
+      $('reviewImagesBtn').addEventListener('click', openImageModal);
+      $('closeImageModalBtn').addEventListener('click', closeImageModal);
+      $('imageModal').addEventListener('click', (event) => {
+        if (event.target === $('imageModal')) closeImageModal();
+      });
+      $('selectAllImagesBtn').addEventListener('click', () => {
+        currentAssets().filter((asset) => asset.image_exists).forEach((asset) => state.selectedImageIds.add(asset.asset_id));
+        renderImageModal();
+      });
+      $('clearImageSelectionBtn').addEventListener('click', () => {
+        state.selectedImageIds.clear();
+        renderImageModal();
+      });
+      $('sendSelectedImagesBtn').addEventListener('click', async () => {
+        await startJob('meshes', [...state.selectedImageIds]);
+      });
       $('newManifestBtn').addEventListener('click', () => {
         state.selectedManifest = null;
         $('manifestName').value = `test_${Date.now()}.json`;

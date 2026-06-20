@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -31,6 +32,7 @@ LOG_DIR = OUTPUTS_DIR / "logs"
 INDEX_PATH = OUTPUTS_DIR / "index.jsonl"
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+ASSET_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+_\d{3}$")
 
 
 def rel_path(path: Path) -> str:
@@ -179,14 +181,25 @@ def state_payload() -> dict[str, Any]:
     }
 
 
-def run_command_for(mode: str, manifest_name: str) -> list[str]:
+def validate_asset_ids(asset_ids: Any) -> list[str]:
+    if asset_ids is None:
+        return []
+    if not isinstance(asset_ids, list):
+        raise ValueError("asset_ids must be a list")
+    cleaned: list[str] = []
+    for asset_id in asset_ids:
+        if not isinstance(asset_id, str) or not ASSET_ID_RE.match(asset_id):
+            raise ValueError(f"Invalid asset id: {asset_id!r}")
+        cleaned.append(asset_id)
+    return sorted(set(cleaned))
+
+
+def run_command_for(mode: str, manifest_name: str, asset_ids: list[str] | None = None) -> list[str]:
     manifest = f"manifest/{manifest_name}"
-    if mode == "pipeline":
-        return ["bash", "scripts/run_pipeline.sh", manifest]
-    if mode == "images":
+    if mode in ("pipeline", "images"):
         return [".venv/bin/python", "scripts/run_batch.py", manifest, "--phase", "images"]
     if mode == "meshes":
-        return [
+        command = [
             ".venv/bin/python",
             "scripts/run_batch.py",
             manifest,
@@ -195,6 +208,9 @@ def run_command_for(mode: str, manifest_name: str) -> list[str]:
             "--hunyuan-url",
             "http://localhost:8081",
         ]
+        for asset_id in asset_ids or []:
+            command.extend(["--asset-id", asset_id])
+        return command
     if mode == "validate":
         return [".venv/bin/python", "scripts/validate_manifest.py", manifest]
     if mode == "dry-run":
@@ -204,12 +220,15 @@ def run_command_for(mode: str, manifest_name: str) -> list[str]:
     raise ValueError(f"Unknown mode: {mode}")
 
 
-def start_job(manifest_name: str, mode: str) -> dict[str, Any]:
+def start_job(manifest_name: str, mode: str, asset_ids: Any = None) -> dict[str, Any]:
     safe_manifest_path(manifest_name)
+    selected_asset_ids = validate_asset_ids(asset_ids)
+    if selected_asset_ids and mode != "meshes":
+        raise ValueError("Selected asset ids can only be used with mesh jobs")
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     job_id = time.strftime("%Y%m%d_%H%M%S") + f"_{len(JOBS) + 1}"
     log_path = LOG_DIR / f"ui_job_{job_id}.log"
-    command = run_command_for(mode, manifest_name)
+    command = run_command_for(mode, manifest_name, selected_asset_ids)
     log_file = open(log_path, "w", buffering=1)
     log_file.write(f"$ {' '.join(command)}\n\n")
     proc = subprocess.Popen(
@@ -231,6 +250,7 @@ def start_job(manifest_name: str, mode: str) -> dict[str, Any]:
         "started_at": time.time(),
         "ended_at": None,
         "pid": proc.pid,
+        "asset_ids": selected_asset_ids,
         "process": proc,
     }
     with JOBS_LOCK:
@@ -310,7 +330,11 @@ class BlockyHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "name": path.name})
                 return
             if parsed.path == "/api/jobs":
-                job = start_job(payload.get("manifest", ""), payload.get("mode", "pipeline"))
+                job = start_job(
+                    payload.get("manifest", ""),
+                    payload.get("mode", "images"),
+                    payload.get("asset_ids"),
+                )
                 self.send_json(job)
                 return
             if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/stop"):
