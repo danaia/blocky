@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "prison_shelves_with_comic_books",
+    "category": "interior",
+    "prompt": "A set of prison shelves filled with comic books and thin books, looking beat up and dirty. The shelves are disheveled and chaotic, floating on a pure white background. Ideal for image-to-3D rendering.",
+    "negative_prompt": "No people, no other furniture, no colorful backgrounds, no clean or organized appearance.",
+    "count": 4,
+    "seed": 12345,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]

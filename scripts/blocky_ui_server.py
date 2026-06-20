@@ -44,11 +44,16 @@ CANCEL_PATTERNS = [
     "scripts/run_batch.py",
     "scripts/run_pipeline.sh",
     "scripts/decimate_glbs.py",
+    "rewrite_glb_textures.py",
     "ComfyUI/main.py",
+    "main.py --port 8188",
     "api_server.py",
+    "model_worker.py",
+    "hy3d",
 ]
 CANCEL_PORTS = [8188, 8081]
 HUNYUAN_PROCESS: subprocess.Popen[Any] | None = None
+COMFYUI_PROCESS: subprocess.Popen[Any] | None = None
 ACTIVE_JOB_STATUSES = {"preparing", "running", "stopping"}
 VRAM_FREE_THRESHOLD_MIB = 20000
 BLENDER_BIN = os.environ.get("BLENDER_BIN", "/usr/local/bin/blender")
@@ -62,10 +67,26 @@ def safe_manifest_path(name: str) -> Path:
     name = unquote(name).strip()
     if not name:
         raise ValueError("Manifest name is required")
+    if "/" not in name and "\\" not in name and Path(name).suffix == "":
+        name = f"{name}.json"
     path = (MANIFEST_DIR / name).resolve()
     if MANIFEST_DIR.resolve() not in path.parents or path.suffix != ".json":
         raise ValueError("Manifest must be a JSON file inside manifest/")
     return path
+
+
+def find_comfyui_dir() -> Path:
+    env_dir = os.environ.get("COMFYUI_DIR")
+    candidates = [
+        Path(env_dir).expanduser() if env_dir else None,
+        Path("/home/dana/comfy/ComfyUI"),
+        ROOT.parent / "ComfyUI",
+        Path("/home/dana/workspace/ComfyUI"),
+    ]
+    for candidate in candidates:
+        if candidate and (candidate / "main.py").exists():
+            return candidate
+    raise ValueError("ComfyUI not found. Set COMFYUI_DIR=/path/to/ComfyUI before starting Blocky UI.")
 
 
 def safe_project_path(relative_path: str) -> Path:
@@ -520,7 +541,7 @@ def decimate_selected_game_assets(job: dict[str, Any]) -> int:
     grouped = mesh_paths_by_category(job["manifest"], job.get("asset_ids", []))
     if not grouped:
         _job_log(job, "No generated mesh GLBs found for game asset export.")
-        return 0
+        return 1
     manifest_path = f"manifest/{job['manifest']}"
     total = sum(len(paths) for paths in grouped.values())
     _job_log(job, f"Creating game-ready assets for {total} mesh GLB(s)...")
@@ -566,6 +587,54 @@ def stop_comfyui() -> dict[str, Any]:
         "killed_port": killed_port,
         "stopped": stopped,
     }
+
+
+def stop_hunyuan() -> dict[str, Any]:
+    was_running = service_status("http://localhost:8081/health", timeout=1.0)
+    killed_process = _pkill_pattern("api_server.py")
+    killed_port = _kill_port(8081)
+    stopped = wait_for_service_down("http://localhost:8081/health", timeout=30.0)
+    return {
+        "was_running": was_running,
+        "killed_process": killed_process,
+        "killed_port": killed_port,
+        "stopped": stopped,
+    }
+
+
+def ensure_comfyui_service() -> dict[str, Any]:
+    global COMFYUI_PROCESS
+    if service_status("http://localhost:8188/system_stats", timeout=2.0):
+        return {"ok": True, "started": False, "log_path": "outputs/logs/comfyui.log"}
+
+    comfyui_dir = find_comfyui_dir()
+    python_path = comfyui_dir / ".venv" / "bin" / "python"
+    if not python_path.exists():
+        raise ValueError(f"ComfyUI Python not found at {python_path}")
+
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / "comfyui.log"
+    log_file = open(log_path, "a", buffering=1)
+    log_file.write("Starting ComfyUI from Blocky UI...\n")
+    COMFYUI_PROCESS = subprocess.Popen(
+        [str(python_path), str(comfyui_dir / "main.py"), "--port", "8188"],
+        cwd=comfyui_dir,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    (LOG_DIR / "comfyui.pid").write_text(f"{COMFYUI_PROCESS.pid}\n")
+    if not wait_for_service("http://localhost:8188/system_stats", timeout=180.0):
+        raise ValueError(f"ComfyUI did not become ready. See {rel_path(log_path)}")
+    return {"ok": True, "started": True, "log_path": rel_path(log_path), "pid": COMFYUI_PROCESS.pid}
+
+
+def switch_to_comfyui_for_new_manifest() -> dict[str, Any]:
+    stop_result = stop_hunyuan()
+    vram = wait_for_vram(timeout=60.0)
+    comfyui = ensure_comfyui_service()
+    return {"hunyuan": stop_result, "vram": vram, "comfyui": comfyui}
 
 
 def ensure_hunyuan_service() -> dict[str, Any]:
@@ -670,13 +739,11 @@ def _mesh_job_worker(job_id: str) -> None:
             else:
                 detail = f"{free_mib} MiB free"
             _set_step(job, "wait_vram", "done", detail)
-            hunyuan_detail = "Starting or reusing Hunyuan3D"
-            if stop_result["was_running"] and service_status("http://localhost:8081/health", timeout=1.0):
-                hunyuan_detail = "Restarting Hunyuan3D after ComfyUI handoff"
-                _job_log(job, "ComfyUI was running; restarting Hunyuan3D for a clean CUDA context.")
-                _pkill_pattern("api_server.py")
-                _kill_port(8081)
-                wait_for_service_down("http://localhost:8081/health", timeout=30.0)
+            hunyuan_detail = "Starting Hunyuan3D"
+            if service_status("http://localhost:8081/health", timeout=1.0):
+                hunyuan_detail = "Restarting Hunyuan3D for a clean CUDA context"
+                _job_log(job, "Restarting Hunyuan3D before mesh generation for a clean CUDA context.")
+                stop_hunyuan()
             _set_step(job, "start_hunyuan", "running", hunyuan_detail)
             _job_log(job, f"VRAM check: {detail}. Ensuring Hunyuan3D...")
 
@@ -736,7 +803,7 @@ def _mesh_job_worker(job_id: str) -> None:
 
 
 def start_job(manifest_name: str, mode: str, asset_ids: Any = None) -> dict[str, Any]:
-    safe_manifest_path(manifest_name)
+    manifest_name = safe_manifest_path(manifest_name).name
     selected_asset_ids = validate_asset_ids(asset_ids)
     if selected_asset_ids and mode != "meshes":
         raise ValueError("Selected asset ids can only be used with mesh jobs")
@@ -744,7 +811,19 @@ def start_job(manifest_name: str, mode: str, asset_ids: Any = None) -> dict[str,
     with JOBS_LOCK:
         for running in JOBS.values():
             proc = running.get("process")
-            if running["status"] in ACTIVE_JOB_STATUSES and (not proc or proc.poll() is None):
+            if running["status"] not in ACTIVE_JOB_STATUSES:
+                continue
+            if proc and proc.poll() is not None:
+                running["status"] = "succeeded" if proc.returncode == 0 else "failed"
+                running["returncode"] = proc.returncode
+                running["ended_at"] = time.time()
+                continue
+            if mode == "meshes" and running.get("mode") == "images" and proc and proc.poll() is None:
+                _job_log(running, "Cancelling image job so selected images can start 3D generation.")
+                _terminate_process_group(proc)
+                _mark_job_cancelled(running)
+                continue
+            if not proc or proc.poll() is None:
                 raise ValueError(f"Job {running['id']} is already running. Cancel it before starting another job.")
 
         job_id = time.strftime("%Y%m%d_%H%M%S") + f"_{len(JOBS) + 1}"
@@ -803,19 +882,19 @@ def _mark_job_cancelled(job: dict[str, Any]) -> None:
     job["ended_at"] = time.time()
 
 
-def _terminate_process_group(proc: subprocess.Popen[Any]) -> bool:
+def _terminate_process_group(proc: subprocess.Popen[Any], force: bool = False) -> bool:
     if proc.poll() is not None:
         return False
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
+        os.killpg(proc.pid, signal.SIGKILL if force else signal.SIGTERM)
         return True
     except ProcessLookupError:
         return False
 
 
-def _pkill_pattern(pattern: str) -> bool:
+def _pkill_pattern(pattern: str, force: bool = False) -> bool:
     result = subprocess.run(
-        ["pkill", "-TERM", "-f", pattern],
+        ["pkill", "-KILL" if force else "-TERM", "-f", pattern],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -824,9 +903,9 @@ def _pkill_pattern(pattern: str) -> bool:
     return result.returncode == 0
 
 
-def _kill_port(port: int) -> bool:
+def _kill_port(port: int, force: bool = False) -> bool:
     result = subprocess.run(
-        ["fuser", "-k", f"{port}/tcp"],
+        ["fuser", "-k", "-KILL" if force else "-TERM", f"{port}/tcp"],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -838,7 +917,9 @@ def _kill_port(port: int) -> bool:
 def cancel_all_processes() -> dict[str, Any]:
     cancelled_jobs: list[str] = []
     killed_patterns: list[str] = []
+    force_killed_patterns: list[str] = []
     killed_ports: list[int] = []
+    force_killed_ports: list[int] = []
 
     with JOBS_LOCK:
         for job in JOBS.values():
@@ -853,22 +934,37 @@ def cancel_all_processes() -> dict[str, Any]:
                 _mark_job_cancelled(job)
 
     time.sleep(0.5)
+    with JOBS_LOCK:
+        for job in JOBS.values():
+            proc = job.get("process")
+            if proc and proc.poll() is None:
+                _terminate_process_group(proc, force=True)
 
     for pattern in CANCEL_PATTERNS:
         if _pkill_pattern(pattern):
             killed_patterns.append(pattern)
 
     time.sleep(0.5)
+    for pattern in CANCEL_PATTERNS:
+        if _pkill_pattern(pattern, force=True):
+            force_killed_patterns.append(pattern)
 
     for port in CANCEL_PORTS:
         if _kill_port(port):
             killed_ports.append(port)
 
+    time.sleep(0.5)
+    for port in CANCEL_PORTS:
+        if _kill_port(port, force=True):
+            force_killed_ports.append(port)
+
     return {
         "ok": True,
         "cancelled_jobs": cancelled_jobs,
         "killed_patterns": killed_patterns,
+        "force_killed_patterns": force_killed_patterns,
         "killed_ports": killed_ports,
+        "force_killed_ports": force_killed_ports,
     }
 
 
@@ -943,6 +1039,7 @@ class BlockyHandler(SimpleHTTPRequestHandler):
             payload = read_json_body(self)
             if parsed.path == "/api/manifest":
                 path = safe_manifest_path(payload.get("name", ""))
+                is_new_manifest = not path.exists()
                 if "entries" in payload:
                     entries = normalize_manifest_items(payload.get("entries"))
                     content = json.dumps(entries, indent=2)
@@ -951,7 +1048,19 @@ class BlockyHandler(SimpleHTTPRequestHandler):
                     entries = normalize_manifest_items(json.loads(content))
                     content = json.dumps(entries, indent=2)
                 path.write_text(content.rstrip() + "\n")
-                self.send_json({"ok": True, "name": path.name})
+                service_switch = None
+                service_switch_error = None
+                if is_new_manifest:
+                    try:
+                        service_switch = switch_to_comfyui_for_new_manifest()
+                    except Exception as exc:
+                        service_switch_error = str(exc)
+                self.send_json({
+                    "ok": True,
+                    "name": path.name,
+                    "service_switch": service_switch,
+                    "service_switch_error": service_switch_error,
+                })
                 return
             if parsed.path == "/api/manifest/item/delete":
                 result = delete_manifest_item(

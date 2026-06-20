@@ -110,7 +110,7 @@
                 <p id="editorMeta" class="text-xs text-zinc-500">No file loaded</p>
               </div>
               <div class="flex items-center gap-2">
-                <input id="manifestName" class="h-9 w-56 rounded border border-zinc-300 px-2 text-sm" placeholder="name.json" />
+                <input id="manifestName" class="h-9 w-56 rounded border border-zinc-300 px-2 text-sm" placeholder="name" />
                 <button id="saveBtn" title="Save manifest" class="grid h-9 w-9 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
                   <i data-lucide="save" class="h-4 w-4"></i>
                 </button>
@@ -254,6 +254,11 @@
       const $ = (id) => document.getElementById(id);
       const statusClass = (ok) => ok ? 'bg-emerald-500' : 'bg-zinc-400';
       const fmtTime = (seconds) => seconds ? new Date(seconds * 1000).toLocaleTimeString() : '';
+      const manifestStem = (name) => String(name || '').replace(/\.json$/i, '');
+      const manifestFileName = (name) => {
+        const cleaned = String(name || '').trim().replace(/\.json$/i, '');
+        return cleaned ? `${cleaned}.json` : '';
+      };
       const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -289,7 +294,7 @@
 
       function renderImageJobState() {
         const hasName = Boolean(($('manifestName')?.value || state.selectedManifest || '').trim());
-        const hasEntries = state.manifestEntries.length > 0;
+        const hasEntries = state.manifestEntries.some((entry) => String(entry.id || '').trim() && String(entry.prompt || '').trim());
         if ($('imagesBtn')) $('imagesBtn').disabled = !hasName || !hasEntries;
       }
 
@@ -310,6 +315,20 @@
         state.selectedImageIds = new Set([...state.selectedImageIds].filter((assetId) => validIds.has(assetId)));
       }
 
+      function blankEntry() {
+        return {
+          id: '',
+          category: '',
+          prompt: '',
+          negative_prompt: '',
+          count: 1,
+          seed: null,
+          image_size: 1024,
+          mesh_quality: 'draft',
+          target_height_m: 1.0
+        };
+      }
+
       function defaultEntry() {
         return {
           id: 'new_asset_001',
@@ -325,7 +344,7 @@
       }
 
       function setEntries(entries) {
-        state.manifestEntries = Array.isArray(entries) && entries.length ? entries.map((entry) => ({ ...defaultEntry(), ...entry })) : [defaultEntry()];
+        state.manifestEntries = Array.isArray(entries) ? entries.map((entry) => ({ ...defaultEntry(), ...entry })) : [];
         renderEntries();
       }
 
@@ -352,7 +371,7 @@
             mesh_quality: value('mesh_quality'),
             target_height_m: Math.max(0.01, Number.parseFloat(value('target_height_m') || '1'))
           };
-        });
+        }).filter((entry) => entry.id || entry.category || entry.prompt || entry.negative_prompt);
       }
 
       function renderEntries() {
@@ -543,10 +562,10 @@
 
       async function loadManifest(name) {
         const data = await api(`/api/manifest?name=${encodeURIComponent(name)}`);
-        state.selectedManifest = name;
-        $('manifestName').value = name;
+        state.selectedManifest = data.name || name;
+        $('manifestName').value = manifestStem(data.name || name);
         setEntries(data.entries || []);
-        $('editorTitle').textContent = name;
+        $('editorTitle').textContent = data.name || name;
         $('editorMeta').textContent = `${state.manifestEntries.length.toLocaleString()} model type sections`;
         pruneSelectedImages();
         const firstImage = currentAssets().find((asset) => asset.image_exists);
@@ -556,23 +575,26 @@
       }
 
       async function saveManifest() {
-        const name = $('manifestName').value.trim();
+        const name = manifestStem($('manifestName').value);
         if (!name) throw new Error('Manifest name is required');
         const entries = collectEntries();
-        await api('/api/manifest', {
+        const result = await api('/api/manifest', {
           method: 'POST',
           body: JSON.stringify({ name, entries })
         });
         state.manifestEntries = entries;
-        state.selectedManifest = name;
+        state.selectedManifest = result.name;
+        $('manifestName').value = manifestStem(result.name);
         await refresh();
-        await loadManifest(name);
+        await loadManifest(result.name);
+        if (result.service_switch_error) {
+          alert(`Manifest saved, but ComfyUI could not be started: ${result.service_switch_error}`);
+        }
       }
 
       async function deleteEntry(index) {
-        if (!state.selectedManifest || $('manifestName').value.trim() !== state.selectedManifest) {
+        if (!state.selectedManifest || manifestFileName($('manifestName').value) !== state.selectedManifest) {
           state.manifestEntries.splice(index, 1);
-          if (!state.manifestEntries.length) state.manifestEntries.push(defaultEntry());
           renderEntries();
           renderImageJobState();
           return;
@@ -653,7 +675,7 @@
           alert('Select at least one generated image first.');
           return;
         }
-        const manifest = $('manifestName').value.trim() || state.selectedManifest;
+        const manifest = manifestFileName($('manifestName').value) || state.selectedManifest;
         const meshButton = mode === 'meshes' ? $('sendSelectedImagesBtn') : null;
         const previousMeshButton = meshButton?.innerHTML;
         if (meshButton) {
@@ -669,6 +691,8 @@
           state.selectedJob = job.id;
           await refresh();
           await loadLog();
+        } catch (error) {
+          alert(error.message);
         } finally {
           if (meshButton && previousMeshButton) {
             meshButton.innerHTML = previousMeshButton;
@@ -813,9 +837,11 @@
           const parts = [
             `${result.cancelled_jobs.length} UI job${result.cancelled_jobs.length === 1 ? '' : 's'}`,
             `${result.killed_patterns.length} process pattern${result.killed_patterns.length === 1 ? '' : 's'}`,
-            `${result.killed_ports.length} port${result.killed_ports.length === 1 ? '' : 's'}`
+            `${result.force_killed_patterns.length} forced pattern${result.force_killed_patterns.length === 1 ? '' : 's'}`,
+            `${result.killed_ports.length} port${result.killed_ports.length === 1 ? '' : 's'}`,
+            `${result.force_killed_ports.length} forced port${result.force_killed_ports.length === 1 ? '' : 's'}`
           ];
-          alert(`Cancelled ${parts.join(', ')}. Run start_blocky_ui.sh to start fresh services.`);
+          alert(`Reset ${parts.join(', ')}. Blocky UI is still running; ComfyUI/Hunyuan will restart when needed.`);
           await refresh();
         } finally {
           btn.disabled = false;
@@ -837,10 +863,14 @@
 
       $('refreshBtn').addEventListener('click', refresh);
       $('cancelAllBtn').addEventListener('click', cancelAll);
-      $('manifestName').addEventListener('input', renderImageJobState);
+      $('manifestName').addEventListener('input', () => {
+        const stem = manifestStem($('manifestName').value);
+        if ($('manifestName').value !== stem) $('manifestName').value = stem;
+        renderImageJobState();
+      });
       $('saveBtn').addEventListener('click', saveManifest);
       $('addEntryBtn').addEventListener('click', () => {
-        state.manifestEntries = [...collectEntries(), defaultEntry()];
+        state.manifestEntries = [...collectEntries(), blankEntry()];
         renderEntries();
       });
       $('generateAiEntriesBtn').addEventListener('click', generateAiEntries);
@@ -864,8 +894,8 @@
       });
       $('newManifestBtn').addEventListener('click', () => {
         state.selectedManifest = null;
-        $('manifestName').value = `test_${Date.now()}.json`;
-        setEntries([defaultEntry()]);
+        $('manifestName').value = `test_${Date.now()}`;
+        setEntries([]);
         $('editorTitle').textContent = 'New manifest';
         $('editorMeta').textContent = 'Unsaved';
       });

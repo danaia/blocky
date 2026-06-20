@@ -1,0 +1,13 @@
+[
+  {
+    "id": "comic_books_stack",
+    "category": "interior",
+    "prompt": "A visible stack of comic books, isolated, angled slightly, floating on a pure white background. The stack features various colorful covers, showcasing superheroes and action themes, ensuring the appearance is vibrant and appealing for a game asset.",
+    "negative_prompt": "No deep stack of comic books, no flat arrangement, no clutter or additional objects in the background.",
+    "count": 4,
+    "seed": 123456,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]

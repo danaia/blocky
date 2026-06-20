@@ -639,6 +639,8 @@ def main() -> None:
                     print(f"  ✓ {asset_id} — source image ready")
                 done_images += 1
             elif not image_path.exists():
+                failures.append({"id": asset_id, "stage": "mesh", "error": f"source image not found: {image_path}"})
+                update_asset_status(asset_id, "failed", error=f"mesh: source image not found: {image_path}")
                 if not use_progress:
                     print(f"  ✗ {asset_id} — no image found, skipping mesh")
                 continue
@@ -714,6 +716,8 @@ def main() -> None:
             f"images={done_images}/{total} meshes={done_meshes}/{total} failures={len(failures)}\n"
         )
     print(f"\nLog: {log_path}")
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

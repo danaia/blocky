@@ -1,0 +1,13 @@
+[
+  {
+    "id": "mini_spaceman",
+    "category": "interior",
+    "prompt": "A small, detailed figurine of a mini spaceman, wearing a classic space suit with a helmet, floating on a pure white background. The figurine is posed in a dynamic stance as if ready for adventure, showcasing intricate details like buttons and patches on the suit.",
+    "negative_prompt": "No background elements, no other objects, no shadows, no textures other than the spaceman figure.",
+    "count": 4,
+    "seed": 12345,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]
