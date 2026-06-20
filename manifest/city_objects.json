@@ -7,7 +7,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 4.0
   },
   {
     "id": "bench_001",
@@ -17,7 +18,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
   },
   {
     "id": "trash_can_001",
@@ -27,7 +29,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 1.1
   },
   {
     "id": "cash_register_001",
@@ -37,7 +40,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 0.3
   },
   {
     "id": "display_shelf_001",
@@ -47,7 +51,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 1.8
   },
   {
     "id": "traffic_light_001",
@@ -57,7 +62,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 4.2
   },
   {
     "id": "fire_hydrant_001",
@@ -67,7 +73,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 0.9
   },
   {
     "id": "crosswalk_signal_001",
@@ -77,7 +84,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 2.4
   },
   {
     "id": "bus_stop_shelter_001",
@@ -87,7 +95,8 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 2.7
   },
   {
     "id": "mailbox_001",
@@ -97,6 +106,7 @@
     "count": 4,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 1.2
   }
 ]

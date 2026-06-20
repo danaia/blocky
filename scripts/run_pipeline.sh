@@ -10,8 +10,22 @@
 set -euo pipefail
 
 BLOCKY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMFYUI_DIR="/home/dana/workspace/ComfyUI"
-HUNYUAN_DIR="/home/dana/workspace/hunyuan3d-2.1"
+if [[ -z "${COMFYUI_DIR:-}" ]]; then
+    if [[ -d "/home/dana/comfy/ComfyUI" ]]; then
+        COMFYUI_DIR="/home/dana/comfy/ComfyUI"
+    elif [[ -d "${BLOCKY_DIR}/../ComfyUI" ]]; then
+        COMFYUI_DIR="${BLOCKY_DIR}/../ComfyUI"
+    else
+        COMFYUI_DIR="/home/dana/workspace/ComfyUI"
+    fi
+fi
+if [[ -z "${HUNYUAN_DIR:-}" ]]; then
+    if [[ -d "${BLOCKY_DIR}/../hunyuan3d-2.1" ]]; then
+        HUNYUAN_DIR="${BLOCKY_DIR}/../hunyuan3d-2.1"
+    else
+        HUNYUAN_DIR="/home/dana/workspace/hunyuan3d-2.1"
+    fi
+fi
 MANIFEST="${1:-manifest/test_3.json}"
 BLENDER_BIN="${BLENDER_BIN:-/usr/local/bin/blender}"
 DECIMATE_PRESET="${DECIMATE_PRESET:-game_ready}"
@@ -31,6 +45,31 @@ BLOCKY_PYTHON="${BLOCKY_DIR}/.venv/bin/python"
 
 # VRAM threshold: don't start Hunyuan3D until this many MiB are free (RTX 5090 = 32768 MiB)
 VRAM_FREE_THRESHOLD=20000
+
+require_file() {
+    local path="$1" description="$2"
+    if [[ ! -e "$path" ]]; then
+        echo "ERROR: Missing ${description}: ${path}" >&2
+        exit 1
+    fi
+}
+
+require_executable() {
+    local path="$1" description="$2"
+    if [[ ! -x "$path" ]]; then
+        echo "ERROR: Missing executable ${description}: ${path}" >&2
+        exit 1
+    fi
+}
+
+preflight_paths() {
+    require_executable "$BLOCKY_PYTHON" "Blocky Python"
+    require_executable "$COMFYUI_PYTHON" "ComfyUI Python"
+    require_file "${COMFYUI_DIR}/main.py" "ComfyUI main.py"
+    require_executable "$HUNYUAN_PYTHON" "Hunyuan3D Python"
+    require_file "${HUNYUAN_DIR}/hunyuan3d-2.1-src/api_server.py" "Hunyuan3D API server"
+    require_executable "$BLENDER_BIN" "Blender"
+}
 
 # ---------------------------------------------------------------------------
 # Cleanup: kill only services WE started
@@ -171,6 +210,7 @@ run_blender_decimation() {
 cd "${BLOCKY_DIR}"
 mkdir -p outputs/logs
 
+preflight_paths
 kill_stale_processes
 
 echo ""
@@ -229,6 +269,7 @@ start_hunyuan() {
     echo "Starting Hunyuan3D API server..."
     nohup bash -c "
         cd '${HUNYUAN_DIR}/hunyuan3d-2.1-src'
+        mkdir -p gradio_cache
         export CUDA_HOME=/usr/local/cuda-12.8
         export PATH=\"\${CUDA_HOME}/bin:\${PATH}\"
         export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True

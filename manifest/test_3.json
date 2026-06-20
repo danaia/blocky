@@ -7,7 +7,8 @@
     "count": 2,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 4.0
   },
   {
     "id": "bench_001",
@@ -17,7 +18,8 @@
     "count": 2,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
   },
   {
     "id": "fire_hydrant_001",
@@ -27,6 +29,7 @@
     "count": 1,
     "seed": null,
     "image_size": 1024,
-    "mesh_quality": "draft"
+    "mesh_quality": "draft",
+    "target_height_m": 0.9
   }
 ]
