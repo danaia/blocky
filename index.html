@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blocky Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+      html { color-scheme: light; }
+      body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      button, textarea, input, select { font: inherit; }
+      .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+      .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    </style>
+  </head>
+  <body class="min-h-screen bg-zinc-100 text-zinc-950">
+    <div class="min-h-screen grid grid-rows-[auto_1fr]">
+      <header class="border-b border-zinc-300 bg-white">
+        <div class="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3">
+          <div class="flex items-center gap-3">
+            <div class="grid h-9 w-9 place-items-center rounded border border-zinc-300 bg-zinc-950 text-white">
+              <i data-lucide="box" class="h-5 w-5"></i>
+            </div>
+            <div>
+              <h1 class="text-lg font-semibold leading-tight">Blocky Control</h1>
+              <p class="text-xs text-zinc-500">Manifest to PNG, GLB, and game-ready assets</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-sm">
+            <span id="comfyStatus" class="inline-flex items-center gap-1.5 rounded border border-zinc-300 px-2 py-1">
+              <span class="h-2 w-2 rounded-full bg-zinc-400"></span> ComfyUI
+            </span>
+            <span id="hunyuanStatus" class="inline-flex items-center gap-1.5 rounded border border-zinc-300 px-2 py-1">
+              <span class="h-2 w-2 rounded-full bg-zinc-400"></span> Hunyuan
+            </span>
+            <button id="refreshBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 bg-white px-3 hover:bg-zinc-50">
+              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              Refresh
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="mx-auto grid w-full max-w-[1600px] grid-cols-12 gap-4 px-4 py-4">
+        <aside class="col-span-12 lg:col-span-3">
+          <section class="border border-zinc-300 bg-white">
+            <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+              <h2 class="text-sm font-semibold">Manifests</h2>
+              <button id="newManifestBtn" title="New manifest" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                <i data-lucide="file-plus-2" class="h-4 w-4"></i>
+              </button>
+            </div>
+            <div id="manifestList" class="max-h-[calc(100vh-220px)] overflow-auto scrollbar-thin"></div>
+          </section>
+        </aside>
+
+        <section class="col-span-12 lg:col-span-5">
+          <div class="border border-zinc-300 bg-white">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-300 px-3 py-2">
+              <div class="min-w-0">
+                <h2 id="editorTitle" class="truncate text-sm font-semibold">Select a manifest</h2>
+                <p id="editorMeta" class="text-xs text-zinc-500">No file loaded</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="manifestName" class="h-9 w-56 rounded border border-zinc-300 px-2 text-sm" placeholder="name.json" />
+                <button id="saveBtn" title="Save manifest" class="grid h-9 w-9 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="save" class="h-4 w-4"></i>
+                </button>
+              </div>
+            </div>
+            <textarea id="manifestEditor" spellcheck="false" class="h-[calc(100vh-265px)] min-h-[420px] w-full resize-none border-0 bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100 outline-none scrollbar-thin"></textarea>
+            <div class="flex flex-wrap items-center gap-2 border-t border-zinc-300 px-3 py-2">
+              <button data-mode="validate" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="check" class="h-4 w-4"></i> Validate
+              </button>
+              <button data-mode="dry-run" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="list-checks" class="h-4 w-4"></i> Dry Run
+              </button>
+              <button data-mode="pipeline" class="jobBtn inline-flex h-9 items-center gap-2 rounded bg-zinc-950 px-3 text-white hover:bg-zinc-800">
+                <i data-lucide="play" class="h-4 w-4"></i> Run Pipeline
+              </button>
+              <button id="imagesBtn" data-mode="images" title="Requires ComfyUI already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40">
+                <i data-lucide="image" class="h-4 w-4"></i> Images
+              </button>
+              <button id="meshesBtn" data-mode="meshes" title="Requires Hunyuan already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40">
+                <i data-lucide="cuboid" class="h-4 w-4"></i> Meshes
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="col-span-12 lg:col-span-4">
+          <div class="grid gap-4">
+            <div class="border border-zinc-300 bg-white">
+              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                <h2 class="text-sm font-semibold">Assets</h2>
+                <span id="assetSummary" class="text-xs text-zinc-500"></span>
+              </div>
+              <div class="max-h-72 overflow-auto scrollbar-thin">
+                <table class="w-full text-left text-xs">
+                  <thead class="sticky top-0 bg-zinc-50 text-zinc-500">
+                    <tr>
+                      <th class="px-3 py-2 font-medium">Asset</th>
+                      <th class="px-3 py-2 font-medium">Status</th>
+                      <th class="px-3 py-2 font-medium">Verts</th>
+                    </tr>
+                  </thead>
+                  <tbody id="assetRows" class="divide-y divide-zinc-200"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="border border-zinc-300 bg-white">
+              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                <h2 class="text-sm font-semibold">Jobs</h2>
+                <button id="stopJobBtn" title="Stop selected job" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="square" class="h-4 w-4"></i>
+                </button>
+              </div>
+              <div id="jobList" class="max-h-48 overflow-auto divide-y divide-zinc-200 scrollbar-thin"></div>
+            </div>
+
+            <div class="border border-zinc-300 bg-white">
+              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                <h2 class="text-sm font-semibold">Log</h2>
+                <span id="logTitle" class="text-xs text-zinc-500">No job selected</span>
+              </div>
+              <pre id="logPane" class="h-[calc(100vh-580px)] min-h-56 overflow-auto whitespace-pre-wrap bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100 scrollbar-thin"></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = { manifests: [], index: [], jobs: [], selectedManifest: null, selectedJob: null };
+      const $ = (id) => document.getElementById(id);
+      const statusClass = (ok) => ok ? 'bg-emerald-500' : 'bg-zinc-400';
+      const fmtTime = (seconds) => seconds ? new Date(seconds * 1000).toLocaleTimeString() : '';
+
+      async function api(path, options = {}) {
+        const res = await fetch(path, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      }
+
+      function renderServices(services) {
+        for (const [id, ok] of [['comfyStatus', services.comfyui], ['hunyuanStatus', services.hunyuan]]) {
+          const el = $(id);
+          el.querySelector('span').className = `h-2 w-2 rounded-full ${statusClass(ok)}`;
+        }
+        $('imagesBtn').disabled = !services.comfyui;
+        $('meshesBtn').disabled = !services.hunyuan;
+      }
+
+      function renderManifests() {
+        $('manifestList').innerHTML = state.manifests.map((m) => {
+          const active = m.name === state.selectedManifest;
+          const pct = m.asset_count ? Math.round((m.mesh_complete / m.asset_count) * 100) : 0;
+          return `
+            <button data-manifest="${m.name}" class="manifestBtn block w-full border-b border-zinc-200 px-3 py-3 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="truncate text-sm font-medium">${m.name}</span>
+                <span class="text-xs text-zinc-500">${pct}%</span>
+              </div>
+              <div class="mt-1 grid grid-cols-4 gap-1 text-[11px] text-zinc-500">
+                <span>${m.asset_count} assets</span>
+                <span>${m.mesh_complete} mesh</span>
+                <span>${m.image_complete} image</span>
+                <span>${m.failed} fail</span>
+              </div>
+              <div class="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200">
+                <div class="h-full bg-zinc-950" style="width:${pct}%"></div>
+              </div>
+            </button>`;
+        }).join('');
+        document.querySelectorAll('.manifestBtn').forEach((btn) => btn.addEventListener('click', () => loadManifest(btn.dataset.manifest)));
+      }
+
+      function renderAssets() {
+        const manifest = state.manifests.find((item) => item.name === state.selectedManifest);
+        const rows = manifest?.assets || [];
+        $('assetSummary').textContent = `${rows.length} tracked`;
+        $('assetRows').innerHTML = rows.map((item) => `
+          <tr>
+            <td class="px-3 py-2 font-mono">${item.asset_id}</td>
+            <td class="px-3 py-2"><span class="rounded border border-zinc-300 px-1.5 py-0.5">${item.status}</span></td>
+            <td class="px-3 py-2 text-zinc-500">${item.vertex_count ?? ''}</td>
+          </tr>
+        `).join('') || '<tr><td class="px-3 py-4 text-zinc-500" colspan="3">No tracked assets yet</td></tr>';
+      }
+
+      function renderJobs() {
+        $('jobList').innerHTML = state.jobs.map((job) => {
+          const active = job.id === state.selectedJob;
+          return `
+            <button data-job="${job.id}" class="jobSelect block w-full px-3 py-2 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="truncate text-xs font-medium">${job.mode} · ${job.manifest}</span>
+                <span class="text-[11px] text-zinc-500">${job.status}</span>
+              </div>
+              <div class="mt-1 text-[11px] text-zinc-500">${fmtTime(job.started_at)} ${job.log_path}</div>
+            </button>`;
+        }).join('') || '<div class="px-3 py-4 text-xs text-zinc-500">No jobs yet</div>';
+        document.querySelectorAll('.jobSelect').forEach((btn) => btn.addEventListener('click', () => selectJob(btn.dataset.job)));
+      }
+
+      async function refresh() {
+        const data = await api('/api/state');
+        state.manifests = data.manifests;
+        state.index = data.index;
+        state.jobs = data.jobs;
+        if (!state.selectedManifest && state.manifests.length) state.selectedManifest = state.manifests[0].name;
+        if (!state.selectedJob && state.jobs.length) state.selectedJob = state.jobs[0].id;
+        renderServices(data.services);
+        renderManifests();
+        renderAssets();
+        renderJobs();
+        if (state.selectedJob) loadLog();
+        lucide.createIcons();
+      }
+
+      async function loadManifest(name) {
+        const data = await api(`/api/manifest?name=${encodeURIComponent(name)}`);
+        state.selectedManifest = name;
+        $('manifestName').value = name;
+        $('manifestEditor').value = data.content;
+        $('editorTitle').textContent = name;
+        $('editorMeta').textContent = `${data.content.length.toLocaleString()} characters`;
+        renderManifests();
+        renderAssets();
+      }
+
+      async function saveManifest() {
+        const name = $('manifestName').value.trim();
+        await api('/api/manifest', {
+          method: 'POST',
+          body: JSON.stringify({ name, content: $('manifestEditor').value })
+        });
+        state.selectedManifest = name;
+        await refresh();
+        await loadManifest(name);
+      }
+
+      async function startJob(mode) {
+        if (mode === 'images' && $('imagesBtn').disabled) {
+          alert('Images-only requires ComfyUI to already be running. Use Run Pipeline to start services automatically.');
+          return;
+        }
+        if (mode === 'meshes' && $('meshesBtn').disabled) {
+          alert('Meshes-only requires Hunyuan to already be running. Use Run Pipeline to start services automatically.');
+          return;
+        }
+        const manifest = $('manifestName').value.trim() || state.selectedManifest;
+        const job = await api('/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({ manifest, mode })
+        });
+        state.selectedJob = job.id;
+        await refresh();
+        await loadLog();
+      }
+
+      async function selectJob(id) {
+        state.selectedJob = id;
+        renderJobs();
+        await loadLog();
+      }
+
+      async function loadLog() {
+        if (!state.selectedJob) return;
+        const data = await api(`/api/jobs/${state.selectedJob}/log`);
+        $('logTitle').textContent = state.selectedJob;
+        $('logPane').textContent = data.log || '';
+        $('logPane').scrollTop = $('logPane').scrollHeight;
+      }
+
+      async function stopJob() {
+        if (!state.selectedJob) return;
+        await api(`/api/jobs/${state.selectedJob}/stop`, { method: 'POST', body: '{}' });
+        await refresh();
+      }
+
+      $('refreshBtn').addEventListener('click', refresh);
+      $('saveBtn').addEventListener('click', saveManifest);
+      $('stopJobBtn').addEventListener('click', stopJob);
+      $('newManifestBtn').addEventListener('click', () => {
+        state.selectedManifest = null;
+        $('manifestName').value = `test_${Date.now()}.json`;
+        $('manifestEditor').value = JSON.stringify([
+          {
+            id: 'new_asset_001',
+            category: 'interior',
+            prompt: 'single game asset object, pure white background, floating in void, alpha channel around object, clean product render, no floor, no shadows',
+            negative_prompt: 'text, watermark, people, clutter, floor plane, ground plane, base plate, shadow, multiple objects, cropped',
+            count: 1,
+            seed: null,
+            image_size: 1024,
+            mesh_quality: 'draft',
+            target_height_m: 1.0
+          }
+        ], null, 2);
+        $('editorTitle').textContent = 'New manifest';
+        $('editorMeta').textContent = 'Unsaved';
+      });
+      document.querySelectorAll('.jobBtn').forEach((btn) => btn.addEventListener('click', () => startJob(btn.dataset.mode)));
+
+      refresh().then(() => state.selectedManifest && loadManifest(state.selectedManifest));
+      setInterval(refresh, 4000);
+    </script>
+  </body>
+</html>
