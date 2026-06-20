@@ -1,0 +1,13 @@
+[
+  {
+    "id": "single_modular_prison_cell_wall_corner_section",
+    "category": "interior",
+    "prompt": "A single modular prison cell wall corner section featuring three gray concrete walls, a barred metal window, and a heavy barred cell door. The walls are adorned with random scrawls and drawings, all floating on a pure white background.",
+    "negative_prompt": "No other objects, no people, no furniture, no shadows, no colors other than gray and white.",
+    "count": 4,
+    "seed": 123456,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]

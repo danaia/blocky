@@ -96,6 +96,12 @@ def derive_seed(asset_id: str) -> int:
     return struct.unpack(">I", digest[:4])[0]
 
 
+def seed_for_variant(item: dict, asset_id: str, variant: int) -> int:
+    if item["seed"] is None:
+        return derive_seed(asset_id)
+    return (int(item["seed"]) + variant - 1) % (2**32)
+
+
 # ---------------------------------------------------------------------------
 # State machine  (outputs/index.jsonl)
 # ---------------------------------------------------------------------------
@@ -525,7 +531,7 @@ def main() -> None:
                 if selected_asset_ids and asset_id not in selected_asset_ids:
                     continue
                 cur = index.get(asset_id, {}).get("status", "pending")
-                seed = item["seed"] if item["seed"] is not None else derive_seed(asset_id)
+                seed = seed_for_variant(item, asset_id, v)
                 print(f"  {asset_id:<44}  status={cur:<15}  seed={seed}")
         print(f"\n{total} assets total. Remove --dry-run to execute.")
         return
@@ -555,18 +561,19 @@ def main() -> None:
         for v in range(1, item["count"] + 1)
         if not selected_asset_ids or f"{item['id']}_{v:03d}" in selected_asset_ids
     ]
-    iterator = tqdm(all_assets, unit="asset") if HAS_TQDM else all_assets
+    use_progress = HAS_TQDM and sys.stderr.isatty()
+    iterator = tqdm(all_assets, unit="asset") if use_progress else all_assets
 
     for item, v in iterator:
         asset_id = f"{item['id']}_{v:03d}"
-        seed = item["seed"] if item["seed"] is not None else derive_seed(asset_id)
+        seed = seed_for_variant(item, asset_id, v)
 
         img_dir = OUTPUT_DIR / "images" / item["category"]
         mesh_dir = OUTPUT_DIR / "meshes" / item["category"]
         image_path = img_dir / f"{asset_id}.png"
         glb_path = mesh_dir / f"{asset_id}.glb"
 
-        if HAS_TQDM:
+        if use_progress:
             iterator.set_description(asset_id[:38])
 
         index = load_index()
@@ -576,7 +583,7 @@ def main() -> None:
             if image_path.exists() and glb_path.exists():
                 done_images += 1
                 done_meshes += 1
-                if not HAS_TQDM:
+                if not use_progress:
                     print(f"  ✓ {asset_id} — already complete, skipping")
                 continue
 
@@ -590,14 +597,14 @@ def main() -> None:
                 file_size_bytes=None,
                 error=None,
             )
-            if not HAS_TQDM:
+            if not use_progress:
                 print(f"  ↺ {asset_id} — repaired stale index entry, regenerating missing outputs")
 
         # --- Image generation ---
         if args.phase in ("images", "all"):
             if cur_status != "image_complete" or not image_path.exists():
                 try:
-                    if not HAS_TQDM:
+                    if not use_progress:
                         print(f"  [{asset_id}] image (seed={seed})…")
                     generate_image(
                         item["prompt"], image_path, args.comfyui_url,
@@ -606,7 +613,7 @@ def main() -> None:
                     remove_background(image_path)
                     update_asset_status(asset_id, "image_complete", image_path=str(image_path))
                     done_images += 1
-                    if not HAS_TQDM:
+                    if not use_progress:
                         print(f"    → {image_path}")
                     # Free ComfyUI VRAM between assets when running both phases together
                     if args.phase == "all":
@@ -614,19 +621,23 @@ def main() -> None:
                 except Exception as e:
                     failures.append({"id": asset_id, "stage": "image", "error": str(e)})
                     update_asset_status(asset_id, "failed", error=f"image: {e}")
-                    if not HAS_TQDM:
+                    if not use_progress:
                         print(f"    ✗ IMAGE FAILED: {e}")
                     continue
             else:
+                if not use_progress:
+                    print(f"  ✓ {asset_id} — image already complete, skipping")
                 done_images += 1
                 if args.phase == "all":
                     free_comfyui_vram(args.comfyui_url)
         else:
             # meshes-only phase — count image as done if it exists
             if cur_status == "image_complete" and image_path.exists():
+                if not use_progress:
+                    print(f"  ✓ {asset_id} — source image ready")
                 done_images += 1
             elif not image_path.exists():
-                if not HAS_TQDM:
+                if not use_progress:
                     print(f"  ✗ {asset_id} — no image found, skipping mesh")
                 continue
 
@@ -635,7 +646,7 @@ def main() -> None:
 
         # --- Mesh generation ---
         try:
-            if not HAS_TQDM:
+            if not use_progress:
                 print(f"  [{asset_id}] mesh…")
             mesh_info = generate_mesh(
                 image_path, glb_path, item.get("mesh_quality", "draft"), seed, args.hunyuan_url,
@@ -658,7 +669,7 @@ def main() -> None:
             )
             done_meshes += 1
             consecutive_stall_failures = 0  # reset on success
-            if not HAS_TQDM:
+            if not use_progress:
                 sz_kb = sanity["file_size_bytes"] // 1024
                 embedded = texture_stats["rewritten_images"]
                 print(f"    → {glb_path} ({sanity['vertex_count']} verts, {sz_kb} KB)")
@@ -666,7 +677,7 @@ def main() -> None:
         except Exception as e:
             failures.append({"id": asset_id, "stage": "mesh", "error": str(e)})
             update_asset_status(asset_id, "failed", error=f"mesh: {e}")
-            if not HAS_TQDM:
+            if not use_progress:
                 print(f"    ✗ MESH FAILED: {e}")
             # If this looks like a CUDA stall (Hunyuan3D context is corrupted), stop
             # immediately — every remaining asset will also stall for 120s each.

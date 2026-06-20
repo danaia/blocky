@@ -1,0 +1,13 @@
+[
+  {
+    "id": "modular_prison_cell_wall_corner",
+    "category": "interior",
+    "prompt": "A single modular prison cell wall corner section featuring three gray concrete walls. The design includes a barred metal window, a heavy barred cell door, and random written scrawls and drawings on the walls, all floating on a pure white background. This piece is perfect for a game asset 3D model, showcasing clean product render quality.",
+    "negative_prompt": "no floor slab, no ceiling, no people, no props, no shadows",
+    "count": 4,
+    "seed": 12345,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]
