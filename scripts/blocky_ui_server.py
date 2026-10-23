@@ -13,6 +13,7 @@ import json
 import os
 import re
 import signal
+import socket
 import shlex
 import subprocess
 import threading
@@ -40,22 +41,22 @@ DEFAULT_NEGATIVE_PROMPT = (
     "text, watermark, people, clutter, floor plane, ground plane, base plate, "
     "shadow, multiple objects, cropped, partial view"
 )
+COMFYUI_PORT = int(os.environ.get("COMFYUI_PORT", "8188"))
+HUNYUAN_PORT = int(os.environ.get("HUNYUAN_PORT", "8082"))
+COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "127.0.0.1")
+COMFYUI_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
+HUNYUAN_URL = f"http://127.0.0.1:{HUNYUAN_PORT}"
 CANCEL_PATTERNS = [
-    "scripts/run_batch.py",
-    "scripts/run_pipeline.sh",
-    "scripts/decimate_glbs.py",
-    "rewrite_glb_textures.py",
-    "ComfyUI/main.py",
-    "main.py --port 8188",
-    "api_server.py",
-    "model_worker.py",
-    "hy3d",
+    str(ROOT / "scripts" / "run_batch.py"),
+    str(ROOT / "scripts" / "run_pipeline.sh"),
+    str(ROOT / "scripts" / "decimate_glbs.py"),
 ]
-CANCEL_PORTS = [8188, 8081]
+CANCEL_PORTS = [COMFYUI_PORT, HUNYUAN_PORT]
 HUNYUAN_PROCESS: subprocess.Popen[Any] | None = None
 COMFYUI_PROCESS: subprocess.Popen[Any] | None = None
 ACTIVE_JOB_STATUSES = {"preparing", "running", "stopping"}
 VRAM_FREE_THRESHOLD_MIB = 20000
+VRAM_WAIT_TIMEOUT_SECONDS = 240.0
 BLENDER_BIN = os.environ.get("BLENDER_BIN", "/usr/local/bin/blender")
 
 
@@ -434,7 +435,7 @@ def wait_for_service_down(url: str, timeout: float = 30.0) -> bool:
     return not service_status(url, timeout=1.0)
 
 
-def wait_for_vram(threshold_mib: int = VRAM_FREE_THRESHOLD_MIB, timeout: float = 90.0) -> dict[str, Any]:
+def wait_for_vram(threshold_mib: int = VRAM_FREE_THRESHOLD_MIB, timeout: float = VRAM_WAIT_TIMEOUT_SECONDS) -> dict[str, Any]:
     deadline = time.time() + timeout
     last = gpu_memory()
     while time.time() < deadline:
@@ -477,8 +478,8 @@ def state_payload() -> dict[str, Any]:
         "index": list(index.values()),
         "jobs": current_jobs(),
         "services": {
-            "comfyui": service_status("http://localhost:8188/system_stats"),
-            "hunyuan": service_status("http://localhost:8081/health"),
+            "comfyui": service_status(f"{COMFYUI_URL}/system_stats"),
+            "hunyuan": service_status(f"{HUNYUAN_URL}/health"),
         },
         "gpu": gpu_memory(),
     }
@@ -500,7 +501,7 @@ def validate_asset_ids(asset_ids: Any) -> list[str]:
 def run_command_for(mode: str, manifest_name: str, asset_ids: list[str] | None = None) -> list[str]:
     manifest = f"manifest/{manifest_name}"
     if mode in ("pipeline", "images"):
-        return [".venv/bin/python", "scripts/run_batch.py", manifest, "--phase", "images"]
+        return [".venv/bin/python", "scripts/run_batch.py", manifest, "--phase", "images", "--comfyui-url", COMFYUI_URL]
     if mode == "meshes":
         command = [
             ".venv/bin/python",
@@ -509,7 +510,7 @@ def run_command_for(mode: str, manifest_name: str, asset_ids: list[str] | None =
             "--phase",
             "meshes",
             "--hunyuan-url",
-            "http://localhost:8081",
+            HUNYUAN_URL,
         ]
         for asset_id in asset_ids or []:
             command.extend(["--asset-id", asset_id])
@@ -577,12 +578,18 @@ def decimate_selected_game_assets(job: dict[str, Any]) -> int:
 
 
 def stop_comfyui() -> dict[str, Any]:
-    was_running = service_status("http://localhost:8188/system_stats", timeout=1.0)
+    global COMFYUI_PROCESS
+    was_running = service_status(f"{COMFYUI_URL}/system_stats", timeout=1.0)
+    killed_managed = False
+    if COMFYUI_PROCESS and COMFYUI_PROCESS.poll() is None:
+        killed_managed = _terminate_process_group(COMFYUI_PROCESS)
     killed_process = _pkill_pattern("ComfyUI/main.py")
-    killed_port = _kill_port(8188)
-    stopped = wait_for_service_down("http://localhost:8188/system_stats", timeout=30.0)
+    killed_port = _kill_port(COMFYUI_PORT)
+    stopped = wait_for_service_down(f"{COMFYUI_URL}/system_stats", timeout=30.0)
+    COMFYUI_PROCESS = None
     return {
         "was_running": was_running,
+        "killed_managed": killed_managed,
         "killed_process": killed_process,
         "killed_port": killed_port,
         "stopped": stopped,
@@ -590,13 +597,21 @@ def stop_comfyui() -> dict[str, Any]:
 
 
 def stop_hunyuan() -> dict[str, Any]:
-    was_running = service_status("http://localhost:8081/health", timeout=1.0)
+    global HUNYUAN_PROCESS
+    was_running = service_status(f"{HUNYUAN_URL}/health", timeout=1.0)
+    killed_managed = False
+    if HUNYUAN_PROCESS and HUNYUAN_PROCESS.poll() is None:
+        killed_managed = _terminate_process_group(HUNYUAN_PROCESS)
     killed_process = _pkill_pattern("api_server.py")
-    killed_port = _kill_port(8081)
-    stopped = wait_for_service_down("http://localhost:8081/health", timeout=30.0)
+    killed_launcher = _pkill_pattern("scripts/start_hunyuan_api.sh")
+    killed_port = _kill_port(HUNYUAN_PORT)
+    stopped = wait_for_service_down(f"{HUNYUAN_URL}/health", timeout=30.0)
+    HUNYUAN_PROCESS = None
     return {
         "was_running": was_running,
+        "killed_managed": killed_managed,
         "killed_process": killed_process,
+        "killed_launcher": killed_launcher,
         "killed_port": killed_port,
         "stopped": stopped,
     }
@@ -604,9 +619,10 @@ def stop_hunyuan() -> dict[str, Any]:
 
 def ensure_comfyui_service() -> dict[str, Any]:
     global COMFYUI_PROCESS
-    if service_status("http://localhost:8188/system_stats", timeout=2.0):
+    if service_status(f"{COMFYUI_URL}/system_stats", timeout=2.0):
         return {"ok": True, "started": False, "log_path": "outputs/logs/comfyui.log"}
 
+    require_free_port(COMFYUI_HOST, COMFYUI_PORT)
     comfyui_dir = find_comfyui_dir()
     python_path = comfyui_dir / ".venv" / "bin" / "python"
     if not python_path.exists():
@@ -617,7 +633,7 @@ def ensure_comfyui_service() -> dict[str, Any]:
     log_file = open(log_path, "a", buffering=1)
     log_file.write("Starting ComfyUI from Blocky UI...\n")
     COMFYUI_PROCESS = subprocess.Popen(
-        [str(python_path), str(comfyui_dir / "main.py"), "--port", "8188"],
+        [str(python_path), str(comfyui_dir / "main.py"), "--listen", COMFYUI_HOST, "--port", str(COMFYUI_PORT)],
         cwd=comfyui_dir,
         stdout=log_file,
         stderr=subprocess.STDOUT,
@@ -625,7 +641,7 @@ def ensure_comfyui_service() -> dict[str, Any]:
         start_new_session=True,
     )
     (LOG_DIR / "comfyui.pid").write_text(f"{COMFYUI_PROCESS.pid}\n")
-    if not wait_for_service("http://localhost:8188/system_stats", timeout=180.0):
+    if not wait_for_service(f"{COMFYUI_URL}/system_stats", timeout=180.0):
         raise ValueError(f"ComfyUI did not become ready. See {rel_path(log_path)}")
     return {"ok": True, "started": True, "log_path": rel_path(log_path), "pid": COMFYUI_PROCESS.pid}
 
@@ -639,10 +655,11 @@ def switch_to_comfyui_for_new_manifest() -> dict[str, Any]:
 
 def ensure_hunyuan_service() -> dict[str, Any]:
     global HUNYUAN_PROCESS
-    if service_status("http://localhost:8081/health", timeout=2.0):
+    if service_status(f"{HUNYUAN_URL}/health", timeout=2.0):
         return {"ok": True, "started": False, "log_path": "outputs/logs/hunyuan_api.log"}
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    require_free_port("127.0.0.1", HUNYUAN_PORT)
     log_path = LOG_DIR / "hunyuan_api.log"
     log_file = open(log_path, "a", buffering=1)
     log_file.write("Starting Hunyuan3D API from Blocky UI...\n")
@@ -654,7 +671,7 @@ def ensure_hunyuan_service() -> dict[str, Any]:
         text=True,
         start_new_session=True,
     )
-    if not wait_for_service("http://localhost:8081/health", timeout=180.0):
+    if not wait_for_service(f"{HUNYUAN_URL}/health", timeout=180.0):
         raise ValueError(f"Hunyuan did not become ready. See {rel_path(log_path)}")
     return {"ok": True, "started": True, "log_path": rel_path(log_path), "pid": HUNYUAN_PROCESS.pid}
 
@@ -712,16 +729,32 @@ def _mesh_job_worker(job_id: str) -> None:
     try:
         with JOBS_LOCK:
             job = JOBS[job_id]
-            _set_step(job, "stop_comfyui", "running", "Stopping ComfyUI before mesh generation")
-            _job_log(job, "Preparing mesh job: stopping ComfyUI...")
+            _set_step(job, "stop_comfyui", "running", "Stopping ComfyUI and stale Hunyuan3D workers")
+            _job_log(job, "Preparing mesh job: stopping ComfyUI and stale Hunyuan3D workers...")
+        hunyuan_stop_result = stop_hunyuan()
         stop_result = stop_comfyui()
         if _mesh_prep_cancelled(job_id):
             return
         with JOBS_LOCK:
             job = JOBS[job_id]
-            detail = "ComfyUI stopped" if stop_result["stopped"] else "ComfyUI stop timed out; continuing"
-            if not stop_result["was_running"]:
-                detail = "ComfyUI was not running"
+            stopped_any_hunyuan = any(
+                hunyuan_stop_result.get(key)
+                for key in ("was_running", "killed_managed", "killed_process", "killed_launcher", "killed_port")
+            )
+            stopped_any_comfyui = any(
+                stop_result.get(key)
+                for key in ("was_running", "killed_managed", "killed_process", "killed_port")
+            )
+            if not stop_result["stopped"]:
+                detail = "ComfyUI stop timed out"
+            elif stopped_any_comfyui and stopped_any_hunyuan:
+                detail = "ComfyUI and stale Hunyuan3D workers stopped"
+            elif stopped_any_comfyui:
+                detail = "ComfyUI stopped; no stale Hunyuan3D workers found"
+            elif stopped_any_hunyuan:
+                detail = "Stale Hunyuan3D workers stopped; ComfyUI was not running"
+            else:
+                detail = "ComfyUI and Hunyuan3D were not running"
             _set_step(job, "stop_comfyui", "done", detail)
             _set_step(job, "wait_vram", "running", f"Waiting for >{VRAM_FREE_THRESHOLD_MIB} MiB free VRAM")
             _job_log(job, f"{detail}. Waiting for VRAM...")
@@ -733,17 +766,17 @@ def _mesh_job_worker(job_id: str) -> None:
         with JOBS_LOCK:
             job = JOBS[job_id]
             if vram.get("timed_out"):
-                detail = f"Timed out at {free_mib or '?'} MiB free; continuing"
+                detail = f"Timed out at {free_mib or '?'} MiB free"
             elif free_mib is None:
                 detail = "VRAM could not be read; continuing"
             else:
                 detail = f"{free_mib} MiB free"
             _set_step(job, "wait_vram", "done", detail)
-            hunyuan_detail = "Starting Hunyuan3D"
-            if service_status("http://localhost:8081/health", timeout=1.0):
-                hunyuan_detail = "Restarting Hunyuan3D for a clean CUDA context"
-                _job_log(job, "Restarting Hunyuan3D before mesh generation for a clean CUDA context.")
-                stop_hunyuan()
+            if vram.get("timed_out") and free_mib is not None:
+                raise RuntimeError(
+                    f"Only {free_mib} MiB free after cleanup; need >{VRAM_FREE_THRESHOLD_MIB} MiB before starting Hunyuan3D"
+                )
+            hunyuan_detail = "Starting Hunyuan3D with a clean CUDA context"
             _set_step(job, "start_hunyuan", "running", hunyuan_detail)
             _job_log(job, f"VRAM check: {detail}. Ensuring Hunyuan3D...")
 
@@ -763,7 +796,19 @@ def _mesh_job_worker(job_id: str) -> None:
             return
         with JOBS_LOCK:
             job = JOBS[job_id]
+            _job_log(job, "Mesh batch process exited. Stopping Hunyuan3D to clear VRAM...")
+        stop_hunyuan()
+        vram_after_mesh = wait_for_vram(timeout=60.0)
+        with JOBS_LOCK:
+            job = JOBS[job_id]
             job["returncode"] = mesh_code
+            free_after_mesh = vram_after_mesh.get("free_mib")
+            if free_after_mesh is None:
+                _job_log(job, "Hunyuan3D stopped. VRAM could not be read.")
+            elif vram_after_mesh.get("timed_out"):
+                _job_log(job, f"Hunyuan3D stopped. VRAM still low after cleanup: {free_after_mesh} MiB free.")
+            else:
+                _job_log(job, f"Hunyuan3D stopped. VRAM is clean: {free_after_mesh} MiB free.")
             _set_step(
                 job,
                 "mesh_batch",
@@ -848,12 +893,12 @@ def start_job(manifest_name: str, mode: str, asset_ids: Any = None) -> dict[str,
             "managed_by_worker": mode == "meshes",
         }
         if mode == "meshes":
-            _set_step(job, "stop_comfyui", "pending", "Queued")
+            _set_step(job, "stop_comfyui", "pending", "Clean up ComfyUI/Hunyuan3D")
             _set_step(job, "wait_vram", "pending", f"Need >{VRAM_FREE_THRESHOLD_MIB} MiB free")
             _set_step(job, "start_hunyuan", "pending", "Queued")
             _set_step(job, "mesh_batch", "pending", f"{len(selected_asset_ids)} selected asset(s)")
             _set_step(job, "game_assets", "pending", "Create in-game GLBs after mesh batch")
-            _job_log(job, "Mesh job queued. The UI will stop ComfyUI before starting Hunyuan3D.")
+            _job_log(job, "Mesh job queued. The UI will clean up ComfyUI/Hunyuan3D before starting a fresh Hunyuan3D run.")
         else:
             _launch_job_process(job)
         JOBS[job_id] = job
@@ -892,26 +937,73 @@ def _terminate_process_group(proc: subprocess.Popen[Any], force: bool = False) -
         return False
 
 
+def _service_processes(port: int) -> list[int]:
+    """Find only the configured service's processes, never arbitrary port owners."""
+    if port == COMFYUI_PORT:
+        try:
+            service_dir = find_comfyui_dir().resolve()
+        except ValueError:
+            return []
+        script = service_dir / "main.py"
+    elif port == HUNYUAN_PORT:
+        service_dir = Path(os.environ.get("HUNYUAN_DIR", str(
+            ROOT.parent / "hunyuan3d-2.1" if (ROOT.parent / "hunyuan3d-2.1").exists()
+            else Path("/home/dana/workspace/hunyuan3d-2.1")
+        ))).resolve() / "hunyuan3d-2.1-src"
+        script = service_dir / "api_server.py"
+    else:
+        return []
+    found = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            args = (entry / "cmdline").read_bytes().decode().split("\0")
+            cwd = (entry / "cwd").resolve()
+            scripts = [str(script), script.name] if cwd == service_dir else [str(script)]
+            if not any(arg in scripts for arg in args):
+                continue
+            if "--port" in args and args[args.index("--port") + 1] == str(port):
+                found.append(int(entry.name))
+        except (OSError, ValueError, IndexError):
+            continue
+    return found
+
+
 def _pkill_pattern(pattern: str, force: bool = False) -> bool:
-    result = subprocess.run(
-        ["pkill", "-KILL" if force else "-TERM", "-f", pattern],
-        cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
+    # Service shutdown is scoped by installation path and configured port below.
+    if pattern not in CANCEL_PATTERNS:
+        return False
+    killed = False
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            args = (entry / "cmdline").read_bytes().decode().split("\0")
+            cwd = (entry / "cwd").resolve()
+            if pattern in args or (cwd == ROOT and str(Path(pattern).relative_to(ROOT)) in args):
+                os.kill(int(entry.name), signal.SIGKILL if force else signal.SIGTERM)
+                killed = True
+        except (OSError, ValueError):
+            continue
+    return killed
 
 
 def _kill_port(port: int, force: bool = False) -> bool:
-    result = subprocess.run(
-        ["fuser", "-k", "-KILL" if force else "-TERM", f"{port}/tcp"],
-        cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
+    killed = False
+    for pid in _service_processes(port):
+        try:
+            os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)
+            killed = True
+        except ProcessLookupError:
+            pass
+    return killed
+
+
+def require_free_port(host: str, port: int) -> None:
+    with socket.socket() as sock:
+        if sock.connect_ex((host, port)) == 0:
+            raise ValueError(f"Port {port} is occupied by another service; leaving it running")
 
 
 def cancel_all_processes() -> dict[str, Any]:

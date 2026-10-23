@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Hunyuan3D API server on port 8081.
+# Start the Hunyuan3D API server on port 8082.
 # Run this in a separate terminal BEFORE running run_batch.py.
 #
 # Usage:
@@ -16,7 +16,7 @@ if [[ -z "${HUNYUAN_DIR:-}" ]]; then
         HUNYUAN_DIR="/home/dana/workspace/hunyuan3d-2.1"
     fi
 fi
-PORT="${PORT:-8081}"
+PORT="${HUNYUAN_PORT:-${PORT:-8082}}"
 
 if [[ ! -x "${HUNYUAN_DIR}/.venv/bin/python" ]]; then
     echo "ERROR: Hunyuan3D venv not found at ${HUNYUAN_DIR}/.venv/bin/python" >&2
@@ -30,9 +30,13 @@ if [[ ! -f "${HUNYUAN_DIR}/hunyuan3d-2.1-src/api_server.py" ]]; then
     exit 1
 fi
 
-# Kill any existing process on the port
-fuser -k ${PORT}/tcp 2>/dev/null || true
-sleep 1
+# Refuse conflicts without terminating the existing service.
+"${HUNYUAN_DIR}/.venv/bin/python" - "$PORT" <<'PYPORT'
+import socket, sys
+with socket.socket() as sock:
+    if sock.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0:
+        sys.exit(f"ERROR: Port {sys.argv[1]} is occupied; leaving its service running.")
+PYPORT
 
 source "${HUNYUAN_DIR}/.venv/bin/activate"
 export CUDA_HOME=/usr/local/cuda-12.8
@@ -43,7 +47,7 @@ export CUBLAS_WORKSPACE_CONFIG=:4096:8
 cd "${HUNYUAN_DIR}/hunyuan3d-2.1-src"
 mkdir -p gradio_cache
 echo "Starting Hunyuan3D API server on port ${PORT}..."
-python api_server.py \
+exec python api_server.py \
     --model_path tencent/Hunyuan3D-2.1 \
     --subfolder hunyuan3d-dit-v2-1 \
     --low_vram_mode \

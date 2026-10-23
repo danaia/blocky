@@ -5,7 +5,7 @@ Usage:
     python scripts/run_batch.py manifest/city_objects.json
     python scripts/run_batch.py manifest/city_objects.json --dry-run
     python scripts/run_batch.py manifest/city_objects.json --comfyui-url http://localhost:8188
-    python scripts/run_batch.py manifest/city_objects.json --hunyuan-url http://localhost:8081
+    python scripts/run_batch.py manifest/city_objects.json --hunyuan-url http://localhost:8082
 
 Asset State Machine (outputs/index.jsonl):
   status: "pending" | "image_complete" | "mesh_complete" | "failed"
@@ -16,6 +16,7 @@ import base64
 import hashlib
 import io
 import json
+import os
 import struct
 import sys
 import time
@@ -46,8 +47,8 @@ except ImportError:
 # Configuration
 # ---------------------------------------------------------------------------
 
-COMFYUI_URL = "http://localhost:8188"
-HUNYUAN_URL = "http://localhost:8081"
+COMFYUI_URL = f"http://{os.environ.get('COMFYUI_HOST', '127.0.0.1')}:{os.environ.get('COMFYUI_PORT', '8188')}"
+HUNYUAN_URL = f"http://127.0.0.1:{os.environ.get('HUNYUAN_PORT', '8082')}"
 EMBEDDED_TEXTURE_SIZE = 1024
 EMBEDDED_JPEG_QUALITY = 85
 
@@ -314,7 +315,7 @@ def remove_background(image_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Hunyuan3D — mesh generation  (REST API at localhost:8081)
+# Hunyuan3D — mesh generation  (REST API at localhost:8082)
 # ---------------------------------------------------------------------------
 
 def _poll_hunyuan(uid: str, hunyuan_url: str, timeout: int = 1200, stall_timeout: int = 120) -> bytes:

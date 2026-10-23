@@ -9,8 +9,8 @@ URL="http://${HOST}:${PORT}/index.html"
 COMFYUI_HOST="${COMFYUI_HOST:-127.0.0.1}"
 COMFYUI_PORT="${COMFYUI_PORT:-8188}"
 BLOCKY_OPEN_BROWSER="${BLOCKY_OPEN_BROWSER:-1}"
-HUNYUAN_PORT="${HUNYUAN_PORT:-8081}"
-BLOCKY_KILL_PORTS="${BLOCKY_KILL_PORTS:-${PORT} ${COMFYUI_PORT} ${HUNYUAN_PORT}}"
+HUNYUAN_PORT="${HUNYUAN_PORT:-8082}"
+export COMFYUI_HOST COMFYUI_PORT HUNYUAN_PORT
 
 if [[ -z "${COMFYUI_DIR:-}" ]]; then
     if [[ -d "/home/dana/comfy/ComfyUI" ]]; then
@@ -30,28 +30,14 @@ if [[ ! -x ".venv/bin/python" ]]; then
     exit 1
 fi
 
-kill_port() {
-    local port="$1"
-    if command -v fuser >/dev/null 2>&1; then
-        if fuser -s "${port}/tcp" 2>/dev/null; then
-            echo "Clearing stale process on port ${port}"
-            fuser -k "${port}/tcp" >/dev/null 2>&1 || true
-            sleep 0.5
-        fi
-    elif command -v lsof >/dev/null 2>&1; then
-        local pids
-        pids="$(lsof -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
-        if [[ -n "$pids" ]]; then
-            echo "Clearing stale process on port ${port}"
-            kill $pids 2>/dev/null || true
-            sleep 0.5
-        fi
-    fi
+require_free_port() {
+    .venv/bin/python - "$1" "$2" <<'PYPORT'
+import socket, sys
+with socket.socket() as sock:
+    if sock.connect_ex((sys.argv[1], int(sys.argv[2]))) == 0:
+        sys.exit(f"ERROR: Port {sys.argv[2]} is occupied by another service; leaving it running.")
+PYPORT
 }
-
-for stale_port in $BLOCKY_KILL_PORTS; do
-    kill_port "$stale_port"
-done
 
 start_comfyui() {
     local comfy_url="http://${COMFYUI_HOST}:${COMFYUI_PORT}"
@@ -70,16 +56,17 @@ start_comfyui() {
         return 0
     fi
 
+    require_free_port "$COMFYUI_HOST" "$COMFYUI_PORT"
     echo "Starting ComfyUI at ${comfy_url}"
     if command -v setsid >/dev/null 2>&1; then
         setsid -f "${COMFYUI_DIR}/.venv/bin/python" "${COMFYUI_DIR}/main.py" \
-            --port "${COMFYUI_PORT}" \
+            --listen "$COMFYUI_HOST" --port "${COMFYUI_PORT}" \
             > "${ROOT_DIR}/outputs/logs/comfyui.log" 2>&1
         sleep 0.25
         pgrep -f "${COMFYUI_DIR}/main.py.*--port ${COMFYUI_PORT}" | tail -1 > "${ROOT_DIR}/outputs/logs/comfyui.pid" || true
     else
         nohup "${COMFYUI_DIR}/.venv/bin/python" "${COMFYUI_DIR}/main.py" \
-            --port "${COMFYUI_PORT}" \
+            --listen "$COMFYUI_HOST" --port "${COMFYUI_PORT}" \
             > "${ROOT_DIR}/outputs/logs/comfyui.log" 2>&1 &
         echo "$!" > "${ROOT_DIR}/outputs/logs/comfyui.pid"
     fi
@@ -111,9 +98,16 @@ PY
 
 start_comfyui
 
-if (echo > "/dev/tcp/${HOST}/${PORT}") >/dev/null 2>&1; then
+if .venv/bin/python - "$HOST" "$PORT" <<'PYUI' >/dev/null 2>&1
+import json, sys, urllib.request
+with urllib.request.urlopen(f"http://{sys.argv[1]}:{sys.argv[2]}/api/state", timeout=5) as r:
+    data = json.load(r)
+    assert "manifests" in data and "services" in data
+PYUI
+then
     echo "Blocky UI already appears to be running at ${URL}"
 else
+    require_free_port "$HOST" "$PORT"
     echo "Starting Blocky UI at ${URL}"
     if command -v setsid >/dev/null 2>&1; then
         setsid -f .venv/bin/python scripts/blocky_ui_server.py --host "$HOST" --port "$PORT" \
@@ -150,3 +144,11 @@ fi
 echo "Open ${URL}"
 echo "Server log: outputs/logs/blocky_ui.log"
 echo "ComfyUI log: outputs/logs/comfyui.log"
+
+.venv/bin/python - "$HOST" "$PORT" <<'PYUI'
+import json, sys, urllib.request
+with urllib.request.urlopen(f"http://{sys.argv[1]}:{sys.argv[2]}/api/state", timeout=10) as r:
+    data = json.load(r)
+    assert "manifests" in data and "services" in data
+print("Blocky UI API ready")
+PYUI

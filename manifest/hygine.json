@@ -1,0 +1,46 @@
+[
+  {
+    "id": "soap",
+    "category": "interior",
+    "prompt": "A single bar of soap floating on a pure white background, showcasing its smooth surface and gentle curves. The soap is designed with a simple, elegant shape, perfect for a modern bathroom aesthetic.",
+    "negative_prompt": "Multiple bars of soap, cluttered backgrounds, or any additional bathroom items.",
+    "count": 4,
+    "seed": 123456,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 0.1
+  },
+  {
+    "id": "toothbrush",
+    "category": "interior",
+    "prompt": "A single toothbrush floating on a pure white background, highlighting its sleek handle and bristles. The toothbrush features a contemporary design, suitable for a minimalist bathroom.",
+    "negative_prompt": "Multiple toothbrushes, colored backgrounds, or any other dental hygiene products.",
+    "count": 4,
+    "seed": 123457,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 0.2
+  },
+  {
+    "id": "toothpaste",
+    "category": "interior",
+    "prompt": "A single tube of toothpaste floating on a pure white background, emphasizing its distinctive packaging and label design. The toothpaste is modern and appealing, ideal for a stylish bathroom.",
+    "negative_prompt": "Multiple tubes of toothpaste, messy backgrounds, or any other oral care items.",
+    "count": 4,
+    "seed": 123458,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 0.15
+  },
+  {
+    "id": "comb",
+    "category": "interior",
+    "prompt": "A single comb floating on a pure white background, showcasing its teeth and handle. The comb has a sleek design, perfect for a contemporary grooming kit.",
+    "negative_prompt": "Multiple combs, cluttered backgrounds, or any hair styling products.",
+    "count": 4,
+    "seed": 123459,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 0.05
+  }
+]

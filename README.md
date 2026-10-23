@@ -41,9 +41,9 @@ Start the API server (keep running in a separate terminal):
 bash scripts/start_hunyuan_api.sh
 ```
 
-The server exposes `http://localhost:8081`. Verify it's up:
+The server exposes `http://localhost:8082`. Verify it's up:
 ```bash
-curl http://localhost:8081/health
+curl http://localhost:8082/health
 ```
 
 ---
@@ -81,7 +81,7 @@ python scripts/run_batch.py manifest/city_objects.json
 ```bash
 python scripts/run_batch.py manifest/city_objects.json \
     --comfyui-url http://localhost:8188 \
-    --hunyuan-url http://localhost:8081
+    --hunyuan-url http://localhost:8082
 ```
 
 **Optional post-process: decimate GLBs for in-game assets**
@@ -177,3 +177,15 @@ Do not renumber these nodes when customising the workflow.
 - Meshes open in a 3D viewer with visible geometry
 - Re-running skips already-completed assets
 - Failed assets logged to `outputs/logs/failures.json`
+
+## Browser control panel
+
+Run `./start_blocky_ui.sh` and open http://127.0.0.1:8765/.
+The launcher starts ComfyUI on port 8188 and the UI on port 8765.
+Hunyuan3D starts on demand for mesh jobs on port 8082.
+Existing services are preserved; conflicting ports produce an error.
+Override `HUNYUAN_PORT`, `COMFYUI_PORT`, or `BLOCKY_UI_PORT` in the environment
+before launching to use different ports. The batch runner also honors
+`HUNYUAN_PORT` and `COMFYUI_PORT` (explicit URL arguments take precedence).
+Mesh jobs need at least 20,000 MiB of free GPU memory. Unload other GPU models
+before generating meshes when memory is insufficient.

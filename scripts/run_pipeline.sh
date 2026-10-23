@@ -31,8 +31,9 @@ BLENDER_BIN="${BLENDER_BIN:-/usr/local/bin/blender}"
 DECIMATE_PRESET="${DECIMATE_PRESET:-game_ready}"
 DECIMATE_OUTPUT_ROOT="${DECIMATE_OUTPUT_ROOT:-in_game_assets}"
 
-COMFYUI_PORT=8188
-HUNYUAN_PORT=8081
+COMFYUI_PORT="${COMFYUI_PORT:-8188}"
+HUNYUAN_PORT="${HUNYUAN_PORT:-8082}"
+export COMFYUI_PORT HUNYUAN_PORT
 READY_TIMEOUT=180   # seconds to wait for each service
 
 COMFYUI_PID=""
@@ -89,15 +90,16 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# Kill ALL lingering pipeline processes from previous/crashed runs
+# Refuse occupied ports without stopping existing services
 # ---------------------------------------------------------------------------
-kill_stale_processes() {
-    echo "Clearing stale processes and ports..."
-    pkill -f "api_server.py"       2>/dev/null && echo "  Killed stale Hunyuan3D" || true
-    pkill -f "ComfyUI/main.py"     2>/dev/null && echo "  Killed stale ComfyUI"   || true
-    fuser -k "${HUNYUAN_PORT}/tcp" 2>/dev/null || true
-    fuser -k "${COMFYUI_PORT}/tcp" 2>/dev/null || true
-    sleep 3
+check_service_ports() {
+    "$BLOCKY_PYTHON" - "$COMFYUI_PORT" "$HUNYUAN_PORT" <<'PYPORT'
+import socket, sys
+for port in map(int, sys.argv[1:]):
+    with socket.socket() as sock:
+        if sock.connect_ex(("127.0.0.1", port)) == 0:
+            sys.exit(f"ERROR: Port {port} is occupied. Stop its service explicitly before running the pipeline.")
+PYPORT
 }
 
 # ---------------------------------------------------------------------------
@@ -205,13 +207,13 @@ run_blender_decimation() {
 }
 
 # ===========================================================================
-# PRE-FLIGHT: kill stale processes, show GPU state
+# PRE-FLIGHT: check paths and ports, show GPU state
 # ===========================================================================
 cd "${BLOCKY_DIR}"
 mkdir -p outputs/logs
 
 preflight_paths
-kill_stale_processes
+check_service_ports
 
 echo ""
 nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used \
