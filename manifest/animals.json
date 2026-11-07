@@ -1,0 +1,13 @@
+[
+  {
+    "id": "dog_with_cat",
+    "category": "interior",
+    "prompt": "One isolated decorative sculpture of a seated dog with a cat nestled against its side, both joined into a single cohesive object. Natural proportions, clearly defined faces, distinct ears and paws, solid forms, matte surfaces, no base. Entire object visible in three-quarter view, floating on a pure white background, evenly lit, suitable for image-to-3D reconstruction.",
+    "negative_prompt": "Multiple separate objects, additional animals, people, room, scenery, floor, pedestal, text, logos, watermark, cropped parts, motion blur, harsh shadows, thin whiskers, loose fur strands, disconnected geometry, extra limbs, malformed faces.",
+    "count": 4,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]
