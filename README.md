@@ -1,3 +1,5 @@
+> **Recommended GPU: NVIDIA GeForce RTX 5090 (32 GB VRAM) or better for best results.** Blocky's local image-to-3D workflow is designed for this class of GPU. Mesh generation needs at least 20,000 MiB of free GPU memory; unload other GPU models before starting a 3D job.
+
 # BLOCKY
 
 Automated pipeline: manifest → Flux images → Hunyuan3D GLB meshes.
