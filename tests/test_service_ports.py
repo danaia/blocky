@@ -16,6 +16,12 @@ spec.loader.exec_module(ui)
 
 
 class ServicePortsTest(unittest.TestCase):
+    def test_missing_manifest_does_not_launch_job(self):
+        with patch.object(ui, '_launch_job_process') as launch:
+            with self.assertRaisesRegex(ValueError, 'Save the manifest'):
+                ui.start_job('missing_unsaved_manifest.json', 'dry-run')
+            launch.assert_not_called()
+
     def test_mesh_command_uses_configured_url(self):
         with patch.object(ui, 'HUNYUAN_URL', 'http://127.0.0.1:19082'):
             command = ui.run_command_for('meshes', 'test.json', ['test_001'])

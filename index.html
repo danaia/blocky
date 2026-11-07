@@ -55,6 +55,13 @@
       .text-red-600 { color: #f87171 !important; }
       .bg-red-50,
       .hover\:bg-red-50:hover { background: #450a0a !important; }
+      body.has-mesh-progress { padding-bottom: 110px; }
+      body.has-mesh-progress #imageModal { padding-bottom: 120px; }
+      #meshProgressFooter { background: #18181b; border-top: 1px solid #3f3f46; box-shadow: 0 -8px 24px #0005; }
+      #meshProgressFill { transition: width .7s ease; background: #38bdf8; }
+      #meshProgressFooter[data-status="succeeded"] #meshProgressFill { background: #34d399; }
+      #meshProgressFooter[data-status="failed"] #meshProgressFill { background: #f87171; }
+      @media (prefers-reduced-motion: reduce) { #meshProgressFill { transition: none; } }
     </style>
   </head>
   <body class="min-h-screen bg-zinc-100 text-zinc-950">
@@ -125,6 +132,16 @@
                   </button>
                 </div>
                 <div class="grid gap-2 p-3">
+                  <label class="grid gap-1 text-xs text-zinc-500">AI provider
+                    <select id="aiProvider" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950">
+                      <option value="codex">Codex · ChatGPT sign-in</option>
+                      <option value="openai">OpenAI API · separate billing</option>
+                    </select>
+                  </label>
+                  <div class="flex items-center justify-between gap-2 text-xs text-zinc-500">
+                    <span id="aiConnection" role="status">Checking Codex connection...</span>
+                    <button id="checkAiConnectionBtn" class="shrink-0 underline">Check connection</button>
+                  </div>
                   <textarea id="aiModelTypes" class="min-h-20 w-full resize-y rounded border border-zinc-300 px-2 py-2 text-sm" placeholder="prison cell walls, barred doors, security cameras"></textarea>
                   <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
                     <input id="aiCategory" class="h-9 rounded border border-zinc-300 px-2 text-sm" placeholder="category" value="interior" />
@@ -237,8 +254,33 @@
       </div>
     </div>
 
+    <footer id="meshProgressFooter" class="fixed inset-x-0 bottom-0 z-[60] hidden px-4 py-3" aria-label="3D generation progress">
+      <div class="mx-auto grid max-w-[1568px] gap-2">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0 text-sm"><strong id="meshProgressStage" role="status"></strong><span id="meshProgressManifest" class="ml-2 text-xs text-zinc-500"></span></div>
+          <div class="flex shrink-0 items-center gap-3 text-xs">
+            <button id="meshProgressView" class="underline">View job</button>
+            <button id="meshProgressDismiss" class="hidden underline" aria-label="Dismiss 3D progress">Dismiss</button>
+          </div>
+        </div>
+        <div id="meshProgressBar" class="h-1.5 overflow-hidden rounded bg-zinc-800" role="progressbar" aria-label="Estimated overall 3D progress" aria-valuemin="0" aria-valuemax="100">
+          <div id="meshProgressFill" class="h-full rounded" style="width:0%"></div>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-zinc-500">
+          <span id="meshProgressCount"></span>
+          <span><span id="meshProgressElapsed"></span><span class="mx-2">·</span><span id="meshProgressEta"></span></span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="/scripts/mesh_progress.js"></script>
     <script>
       const state = {
+        pendingMeshJob: null,
+        dismissedMeshJobs: new Set(),
+        secondsPerModel: 90,
+        timingLoaded: false,
+        lastRefresh: 0,
         manifests: [],
         index: [],
         jobs: [],
@@ -500,6 +542,61 @@
         }).join('') || '<div class="px-3 py-4 text-xs text-zinc-500">No jobs yet</div>';
         document.querySelectorAll('.jobSelect').forEach((btn) => btn.addEventListener('click', () => selectJob(btn.dataset.job)));
         renderJobSteps();
+        renderMeshProgress();
+      }
+
+      function globalMeshJob() {
+        const jobs = state.jobs.filter(job => job.mode === 'meshes');
+        return state.pendingMeshJob || jobs.find(job => ['preparing', 'running', 'stopping'].includes(job.status))
+          || (jobs[0] && !state.dismissedMeshJobs.has(jobs[0].id) ? jobs[0] : null);
+      }
+
+      function durationLabel(seconds) {
+        const rounded = Math.max(0, Math.floor(seconds));
+        if (rounded < 60) return `${rounded}s`;
+        const minutes = Math.floor(rounded / 60);
+        return minutes < 60 ? `${minutes}m ${rounded % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+      }
+
+      function renderMeshProgress() {
+        const job = globalMeshJob();
+        const footer = $('meshProgressFooter');
+        footer.classList.toggle('hidden', !job);
+        document.body.classList.toggle('has-mesh-progress', !!job);
+        if (!job) return;
+        const manifest = state.manifests.find(item => item.name === job.manifest);
+        const assets = (manifest?.assets || []).map(asset => ({
+          ...asset, updated_at: state.index.find(item => item.asset_id === asset.asset_id)?.updated_at
+        }));
+        const progress = meshProgress(job, assets, Date.now() / 1000, state.secondsPerModel);
+        const stale = !progress.terminal && state.lastRefresh && Date.now() - state.lastRefresh > 15000;
+        footer.dataset.status = job.status;
+        $('meshProgressStage').textContent = stale ? 'Reconnecting to job updates…' : progress.stage;
+        $('meshProgressManifest').textContent = job.manifest;
+        $('meshProgressCount').textContent = `${progress.completed} / ${progress.total} models ready · ${progress.percent}%${progress.terminal ? '' : ' estimated'}`;
+        $('meshProgressFill').style.width = `${progress.percent}%`;
+        $('meshProgressBar').setAttribute('aria-valuenow', progress.percent);
+        $('meshProgressBar').setAttribute('aria-valuetext', `${progress.percent}% estimated; ${progress.completed} of ${progress.total} models ready`);
+        $('meshProgressElapsed').textContent = `${durationLabel(progress.elapsed)} elapsed`;
+        $('meshProgressEta').textContent = progress.terminal ? (job.status === 'succeeded' ? 'Export complete' : 'See job log for details')
+          : stale ? 'ETA paused' : progress.remaining === null ? 'ETA updating…' : `About ${durationLabel(Math.ceil(progress.remaining / 15) * 15)} left`;
+        $('meshProgressEta').title = 'Estimate based on recent model generation times, plus startup and export time. Actual duration varies.';
+        $('meshProgressDismiss').classList.toggle('hidden', !progress.terminal);
+        $('meshProgressView').disabled = job.id === 'pending';
+      }
+
+      async function loadMeshTiming() {
+        if (state.timingLoaded) return;
+        state.timingLoaded = true;
+        const paths = state.manifests.flatMap(item => item.assets || [])
+          .filter(asset => asset.status === 'mesh_complete' && asset.mesh_exists).slice(-10)
+          .map(asset => '/' + asset.mesh_path.replace(/\.glb$/, '.json').split('/').map(encodeURIComponent).join('/'));
+        const results = await Promise.allSettled(paths.map(path => api(path)));
+        const samples = results.filter(result => result.status === 'fulfilled')
+          .map(result => result.value.mesh_info?.generation_time_seconds)
+          .filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+        if (samples.length) state.secondsPerModel = samples[Math.floor(samples.length / 2)];
+        renderMeshProgress();
       }
 
       function selectedJobData() {
@@ -548,6 +645,8 @@
         state.manifests = data.manifests;
         state.index = data.index;
         state.jobs = data.jobs;
+        state.lastRefresh = Date.now();
+        loadMeshTiming();
         state.gpu = data.gpu || state.gpu;
         if (!state.selectedManifest && state.manifests.length) state.selectedManifest = state.manifests[0].name;
         if (!state.selectedJob && state.jobs.length) state.selectedJob = state.jobs[0].id;
@@ -629,14 +728,31 @@
         if (state.selectedManifest) await loadManifest(state.selectedManifest);
       }
 
+      async function checkAiConnection() {
+        if ($('aiProvider').value === 'openai') {
+          $('aiConnection').textContent = 'Uses OPENAI_API_KEY from .env with separate API billing.';
+          return;
+        }
+        $('aiConnection').textContent = 'Checking Codex connection...';
+        try {
+          const status = await api('/api/ai/status');
+          if ($('aiProvider').value === 'codex') $('aiConnection').textContent = status.message;
+        } catch (error) {
+          if ($('aiProvider').value === 'codex') $('aiConnection').textContent = error.message;
+        }
+      }
+
       async function generateAiEntries() {
         const btn = $('generateAiEntriesBtn');
+        const provider = $('aiProvider').value;
         btn.disabled = true;
-        $('aiStatus').textContent = 'Generating entries...';
+        $('aiProvider').disabled = true;
+        $('aiStatus').textContent = provider === 'codex' ? 'Generating with Codex... This may take up to 3 minutes.' : 'Generating entries...';
         try {
           const data = await api('/api/ai/manifest-entries', {
             method: 'POST',
             body: JSON.stringify({
+              provider,
               model_types: $('aiModelTypes').value,
               category: $('aiCategory').value,
               style: $('aiStyle').value,
@@ -655,18 +771,19 @@
           $('aiStatus').textContent = error.message;
         } finally {
           btn.disabled = false;
+          $('aiProvider').disabled = false;
         }
       }
 
       async function startJob(mode, assetIds = []) {
-        if (mode === 'images') {
+        if (['images', 'validate', 'dry-run'].includes(mode)) {
           try {
             await saveManifest();
           } catch (error) {
             alert(error.message);
             return;
           }
-          if (!state.services.comfyui) {
+          if (mode === 'images' && !state.services.comfyui) {
             alert('ComfyUI is not reachable yet. Start ComfyUI, then click Generate Images again.');
             return;
           }
@@ -679,6 +796,8 @@
         const meshButton = mode === 'meshes' ? $('sendSelectedImagesBtn') : null;
         const previousMeshButton = meshButton?.innerHTML;
         if (meshButton) {
+          state.pendingMeshJob = {id: 'pending', mode: 'meshes', manifest, asset_ids: assetIds, status: 'preparing', started_at: Date.now() / 1000, steps: []};
+          renderMeshProgress();
           meshButton.disabled = true;
           meshButton.innerHTML = '<i data-lucide="loader-circle" class="h-4 w-4"></i> Starting 3D';
           lucide.createIcons();
@@ -689,9 +808,18 @@
             body: JSON.stringify({ manifest, mode, asset_ids: assetIds })
           });
           state.selectedJob = job.id;
+          if (mode === 'meshes') {
+            state.pendingMeshJob = null;
+            state.jobs.unshift(job);
+            renderMeshProgress();
+          }
           await refresh();
           await loadLog();
         } catch (error) {
+          if (mode === 'meshes') {
+            state.pendingMeshJob = null;
+            renderMeshProgress();
+          }
           alert(error.message);
         } finally {
           if (meshButton && previousMeshButton) {
@@ -874,6 +1002,21 @@
         renderEntries();
       });
       $('generateAiEntriesBtn').addEventListener('click', generateAiEntries);
+      $('meshProgressView').addEventListener('click', () => {
+        const job = globalMeshJob();
+        if (!job || job.id === 'pending') return;
+        closeImageModal();
+        selectJob(job.id);
+        $('jobList').scrollIntoView({behavior: 'smooth', block: 'center'});
+      });
+      $('meshProgressDismiss').addEventListener('click', () => {
+        const job = globalMeshJob();
+        if (job) state.dismissedMeshJobs.add(job.id);
+        renderMeshProgress();
+      });
+      $('aiProvider').addEventListener('change', checkAiConnection);
+      $('checkAiConnectionBtn').addEventListener('click', checkAiConnection);
+      checkAiConnection();
       $('stopJobBtn').addEventListener('click', stopJob);
       $('copyLogBtn').addEventListener('click', copyLog);
       $('reviewImagesBtn').addEventListener('click', openImageModal);
@@ -902,7 +1045,8 @@
       document.querySelectorAll('.jobBtn').forEach((btn) => btn.addEventListener('click', () => startJob(btn.dataset.mode)));
 
       refresh().then(() => state.selectedManifest && loadManifest(state.selectedManifest));
-      setInterval(refresh, 4000);
+      setInterval(() => refresh().catch(() => renderMeshProgress()), 4000);
+      setInterval(renderMeshProgress, 1000);
     </script>
   </body>
 </html>

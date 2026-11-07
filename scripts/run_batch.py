@@ -499,6 +499,8 @@ def main() -> None:
                         help="Limit work to a specific generated asset id. Can be passed more than once.")
     args = parser.parse_args()
 
+    if not Path(args.manifest).is_file():
+        parser.error(f"Manifest not found: {args.manifest}. Save it in Blocky first, or choose an existing file from manifest/.")
     items = load_manifest(args.manifest)
     selected_asset_ids = set(args.asset_ids)
     manifest_asset_ids = {

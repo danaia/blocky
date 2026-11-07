@@ -180,6 +180,30 @@ Do not renumber these nodes when customising the workflow.
 
 ## Browser control panel
 
+After **Generate 3D**, a global footer follows the job across manifests and the
+image review dialog. It shows the active stage, completed model count, estimated
+overall progress, elapsed time, and approximate time remaining. ETA uses recent
+mesh metadata (a 90-second per-model fallback) plus startup and export allowances.
+Progress reaches 100% only after Blender export succeeds. Failed or cancelled
+jobs remain visible with a link to the job log; finished jobs can be dismissed.
+
+AI Entries defaults to **Codex · ChatGPT sign-in**, using the local Codex CLI
+and your eligible ChatGPT/Codex subscription usage. Install the official Codex
+CLI and run `codex login` in a terminal as the same user who starts Blocky.
+Use `codex login status` or **Check connection** in Blocky to verify sign-in.
+If the CLI is outside the server's PATH, set `CODEX_BIN=/absolute/path/to/codex`
+before launching Blocky. Login remains in Codex; Blocky does not read or copy tokens.
+
+Generation runs `codex exec` with a JSON schema in a temporary directory,
+with a read-only sandbox, shell tools and web search disabled, and a 180-second
+timeout. It ignores user Codex configuration and requires ChatGPT authentication;
+API key environment variables are removed from the child process. Subscription
+usage limits still apply. Generated entries appear in the editor for review.
+
+The **OpenAI API · separate billing** option retains the API generator and uses
+`OPENAI_API_KEY` (or legacy `OPENAI_API`) from `.env`. Neither AI provider is
+needed for local Flux image generation or Hunyuan3D conversion once a manifest exists.
+
 Run `./start_blocky_ui.sh` and open http://127.0.0.1:8765/.
 The launcher starts ComfyUI on port 8188 and the UI on port 8765.
 Hunyuan3D starts on demand for mesh jobs on port 8082.
