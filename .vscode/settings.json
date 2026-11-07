@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "pip": true,
+        "/^python scripts/validate_manifest\\.py manifest/city_objects\\.json && python scripts/run_batch\\.py manifest/city_objects\\.json --dry-run$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "tee": true
+    }
+}

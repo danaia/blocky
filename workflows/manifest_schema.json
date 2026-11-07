@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "prompt", "negative_prompt", "count", "seed", "image_size", "mesh_quality", "target_height_m"],
+        "properties": {
+          "id": {"type": "string"},
+          "category": {"type": "string"},
+          "prompt": {"type": "string"},
+          "negative_prompt": {"type": "string"},
+          "count": {"type": "integer"},
+          "seed": {"type": ["integer", "null"]},
+          "image_size": {"type": "integer", "enum": [512, 768, 1024]},
+          "mesh_quality": {"type": "string", "enum": ["draft", "standard"]},
+          "target_height_m": {"type": "number"}
+        }
+      }
+    }
+  }
+}

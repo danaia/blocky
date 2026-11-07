@@ -1,0 +1,24 @@
+[
+  {
+    "id": "prison_wall_poster_torn",
+    "category": "interior",
+    "prompt": "A torn and beat-up prison wall poster featuring a vintage pin-up girl, floating on a pure white background. The poster has frayed edges and visible wear, making it look aged and authentic.",
+    "negative_prompt": "No modern elements, no bright colors, no additional objects, just the poster on a white background.",
+    "count": 4,
+    "seed": 123456,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  },
+  {
+    "id": "prison_wall_calendar",
+    "category": "interior",
+    "prompt": "A beat-up calendar page hanging on a prison wall, depicting a vintage pin-up girl. The page is torn at the corners and has faded colors, set against a pure white background.",
+    "negative_prompt": "No modern designs, no additional items, just the calendar page floating on a white background.",
+    "count": 4,
+    "seed": 123457,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]

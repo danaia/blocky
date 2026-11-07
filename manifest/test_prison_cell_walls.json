@@ -1,0 +1,13 @@
+[
+  {
+    "id": "prison_cell_walls_003",
+    "category": "interior",
+    "prompt": "single modular prison cell wall corner section, three gray concrete walls with barred metal window and heavy barred cell door, random written scrawls, drawings on walls, , graffiti, dirty background, floating in void, alpha channel around object, empty jail cell architecture kit piece, game asset 3D model, clean product render, no floor slab, no ceiling, no people, no props, no shadows",
+    "negative_prompt": "text, watermark, people, prisoner, guard, bed, toilet, sink, chains, blood, gore, full room scene, corridor, furniture, clutter, floor plane, ceiling plane, ground plane, base plate, shadow, reflective floor, multiple separate objects, cropped, partial view",
+    "count": 1,
+    "seed": null,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 3.0
+  }
+]

@@ -1,6 +1,6 @@
 # BLOCKY — Development Plan
 
-## Phase 1: Asset Factory MVP
+## Phase 1: Manifest → Image → GLB Batch Pipeline
 
 ---
 
@@ -21,7 +21,7 @@ city_objects.json (manifest)
 ┌──────────────┐     ┌───────────────┐     ┌──────────────┐
 │  Image Gen   │────▶│  Mesh Gen     │────▶│  Output      │
 │  (Flux via   │     │  (Hunyuan3D   │     │  (GLB + PNG  │
-│   ComfyUI)   │     │   Python CLI) │     │   + JSON)    │
+│   ComfyUI)   │     │   REST API)   │     │   + JSON)    │
 └──────────────┘     └───────────────┘     └──────────────┘
         │                     │                    │
         ▼                     ▼                    ▼
@@ -32,7 +32,7 @@ city_objects.json (manifest)
 
 **Why ComfyUI for Flux only:** It's the only tool that natively supports Flux as a reusable JSON node graph, with a local REST API for headless automation. Your RTX 5090 (24 GB VRAM) handles shape generation (~10 GB) comfortably; texture synthesis (~21 GB) fits with careful memory management or gradient checkpointing.
 
-**Why direct Python for Hunyuan3D in Phase 1:** Less brittle than building a custom Comfy workflow. Use the CLI/Python API directly until the pipeline works end-to-end.
+**Why REST API for Hunyuan3D:** The installation at `/home/dana/workspace/hunyuan3d-2.1` already exposes a FastAPI server (`api_server.py`, port 8081). HTTP avoids Python venv conflicts, and the async `/send` + poll `/status/{uid}` pattern fits the sequential batch loop cleanly.
 
 ---
 
@@ -160,27 +160,36 @@ blocky/
 
 ---
 
-#### Step 5 — Hunyuan3D Mesh Generation (Day 3–5)
+#### Step 5 — Hunyuan3D Mesh Generation via REST API (Day 3–5)
+
+**Hunyuan3D is already installed at `/home/dana/workspace/hunyuan3d-2.1`.**
 
 **Tasks:**
-- [ ] Install Hunyuan3D-2.1:
-  - Clone the repo or install via pip if available
-  - Verify it works with a test image
-- [ ] Write direct Python/CLI integration in `run_batch.py` (NOT a Comfy workflow for Phase 1)
-- [ ] Pipeline stages to implement:
-  1. **Shape generation:** Input PNG → Hunyuan3D shape model → intermediate mesh/point cloud (~10 GB VRAM on 5090 ✓)
-  2. **Texture/PBR synthesis:** Shape → texture model (~21 GB VRAM — may need gradient checkpointing or lower-res intermediates)
-  3. **GLB export:** Final textured mesh exported as GLB
+- [ ] Start the API server before running the pipeline:
+  ```bash
+  bash scripts/start_hunyuan_api.sh   # runs api_server.py on port 8081
+  ```
+  Endpoints used by `run_batch.py`:
+  - `GET  /health` — liveness check
+  - `POST /send` — async generation; returns `{"uid": "..."}` immediately
+  - `GET  /status/{uid}` — poll until `status == "completed"`; response contains `model_base64` (base64-encoded GLB bytes)
+- [ ] Verify the server starts cleanly with `--low_vram_mode` (already in the start script)
+- [ ] `generate_mesh(image_path, glb_path, mesh_quality, seed, hunyuan_url)` integration:
+  1. Base64-encode the input PNG
+  2. `POST /send` with `{image, seed, remove_background: true, texture, octree_resolution, ...}`
+  3. Poll `/status/{uid}` every 5 s until `completed` or 20-minute timeout
+  4. `base64.b64decode(model_base64)` → write raw bytes to `glb_path` (exact path, not a directory)
+- [ ] Quality params per `mesh_quality`:
+  - `draft`:    `texture=false`, `octree_resolution=256`, `num_inference_steps=5`
+  - `standard`: `texture=true`,  `octree_resolution=256`, `face_count=40000`
 - [ ] Test end-to-end with a single image from Step 4
 
 **Technical decisions:**
-- **VRAM management:** At 29 GB total for shape + texture, the 5090's 24 GB is tight. Options:
-  - Run shape and texture sequentially (not in parallel) — this works if we process one image at a time
-  - Use `--low-vram` or equivalent flags on Hunyuan3D
-  - Downsample input images to 512×512 before mesh generation (document the tradeoff)
-- **Batching:** Process sequentially per image. Parallel processing will OOM.
+- **Separate venv:** Hunyuan3D runs in its own `.venv`; blocky communicates over HTTP — no import conflicts.
+- **`glb_path` is explicit:** `generate_mesh` takes the exact output path. The caller knows the path before the call returns.
+- **VRAM:** `--low_vram_mode` is passed to the server. Sequential batch processing ensures only one job runs at a time, avoiding OOM.
 
-**Deliverable:** Working pipeline: PNG → GLB + preview PNG + metadata JSON.
+**Deliverable:** Working pipeline: PNG → GLB + metadata JSON per asset.
 
 ---
 
@@ -559,8 +568,16 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] Add `--dry-run` flag support (validate manifest and show what would be done without executing)
-- [ ] Add progress bar (use `tqdm` if available, or simple text progress)
+- [x] Add `--dry-run` flag support (validate manifest and show what would be done without executing)
+- [x] Add progress bar (use `tqdm` if available, or simple text progress)
+
+**Incorporated fixes from design review:**
+- Fixed `comfy_url` → `comfyui_url` typo in ComfyUI polling function
+- Implemented ComfyUI output retrieval: `/history/{prompt_id}` → `/view?filename=...&subfolder=...&type=output`
+- `generate_mesh()` takes explicit `glb_path: Path` (not `output_dir`)
+- `write_asset_metadata()` writes per-asset JSON beside each GLB
+- Deterministic seeds: `hashlib.sha256(asset_id).digest()[:4]` unpacked as uint32 via `struct.unpack`
+- Prompts use neutral light gray background (safer for Hunyuan3D silhouette segmentation than pure white)
 
 **Key behaviors:**
 - **State machine skip/resume:** Check `outputs/index.jsonl` for asset status before regenerating
@@ -626,7 +643,7 @@ if __name__ == "__main__":
 |----------|--------|-----------|
 | ComfyUI location | Sibling directory or env-configured path | Keep blocky repo clean; ComfyUI is a dependency, not part of the project |
 | Flux variant | `flux-schnell` first, fallback to `flux-dev` | Schnell is distilled (4–8 steps), faster, lower VRAM. Quality can be evaluated before committing |
-| Hunyuan3D integration | Direct Python/CLI for Phase 1 | Less brittle than building a custom Comfy workflow; focus on pipeline correctness first |
+| Hunyuan3D integration | REST API at `localhost:8081` (`api_server.py`) | Already installed at `/home/dana/workspace/hunyuan3d-2.1`; HTTP avoids venv conflicts; async `/send` + poll pattern fits sequential batch loop |
 | Mesh generation mode | Sequential per-image | 29 GB total for shape+texture exceeds 5090's 24 GB; sequential avoids OOM |
 | Input resolution for mesh gen | Start at 1024×1024, fallback to 512×512 if VRAM constrained | Higher res = better texture detail; document the tradeoff |
 | Batch processing | Sequential (one image → one mesh) | Hunyuan3D is memory-heavy; parallel would OOM on consumer hardware |
@@ -684,9 +701,10 @@ Once Phase 1 succeeds:
 | File | Purpose | Status |
 |------|---------|--------|
 | `plan` | This development plan | ✅ Draft (updated per feedback) |
-| `manifest/city_objects.json` | Object definitions for pipeline input | ⬜ To create |
-| `workflows/flux_image.json` | ComfyUI Flux image generation workflow | ⬜ To create |
-| `scripts/run_batch.py` | Main batch orchestrator + state machine | ⬜ To create |
-| `scripts/validate_manifest.py` | Manifest schema validator | ⬜ To create |
-| `requirements.txt` | Python dependencies | ⬜ To create |
-| `README.md` | Setup and usage documentation | ⬜ To create |
+| `manifest/city_objects.json` | Object definitions for pipeline input | ✅ Created |
+| `workflows/flux_image.json` | ComfyUI Flux schnell workflow (adjust model filenames to match local checkpoints) | ✅ Created |
+| `scripts/run_batch.py` | Main batch orchestrator + state machine | ✅ Created |
+| `scripts/validate_manifest.py` | Manifest schema validator | ✅ Created |
+| `scripts/start_hunyuan_api.sh` | Starts Hunyuan3D API server on port 8081 | ✅ Created |
+| `requirements.txt` | Python dependencies (`trimesh`, `tqdm`) | ✅ Created |
+| `README.md` | Setup and usage documentation | ✅ Created |

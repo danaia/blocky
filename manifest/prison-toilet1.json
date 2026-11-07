@@ -1,0 +1,13 @@
+[
+  {
+    "id": "prison_toilet",
+    "category": "interior",
+    "prompt": "A prison toilet, isolated and floating on a pure white background. The design features a stainless steel finish, a bowl with a seat, and a flush mechanism. The toilet is compact and functional, embodying a minimalist design suitable for a correctional facility.",
+    "negative_prompt": "No people, no graffiti, no additional objects or distractions. The image should focus solely on the toilet without any context or environment.",
+    "count": 4,
+    "seed": 123456,
+    "image_size": 1024,
+    "mesh_quality": "draft",
+    "target_height_m": 1.0
+  }
+]

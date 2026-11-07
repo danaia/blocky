@@ -1,0 +1,4 @@
+trimesh
+tqdm
+rembg[gpu]
+pygltflib

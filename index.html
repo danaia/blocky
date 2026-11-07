@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blocky Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+      html { color-scheme: dark; }
+      body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      button, textarea, input, select { font: inherit; }
+      .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+      .scrollbar-thin::-webkit-scrollbar-thumb { background: #52525b; border-radius: 999px; }
+      body,
+      .bg-white,
+      .bg-zinc-50,
+      .bg-zinc-100 { background: #0a0a0a !important; color: #f4f4f5 !important; }
+      header,
+      section,
+      aside,
+      .border,
+      .border-t,
+      .border-b,
+      .border-r { border-color: #27272a !important; }
+      .bg-white,
+      section.border,
+      .border.bg-white { background: #18181b !important; }
+      .bg-zinc-50 { background: #111113 !important; }
+      .bg-zinc-100 { background: #202024 !important; }
+      .bg-zinc-950 { background: #050505 !important; }
+      .bg-zinc-200 { background: #3f3f46 !important; }
+      .text-zinc-950,
+      .text-zinc-700 { color: #f4f4f5 !important; }
+      .text-zinc-500 { color: #a1a1aa !important; }
+      input,
+      textarea,
+      select {
+        background: #0f0f12 !important;
+        border-color: #3f3f46 !important;
+        color: #f4f4f5 !important;
+      }
+      input::placeholder,
+      textarea::placeholder { color: #71717a !important; }
+      button.border,
+      .rounded.border { background: #18181b; border-color: #3f3f46 !important; color: #f4f4f5; }
+      button:hover,
+      .hover\:bg-zinc-50:hover,
+      .hover\:bg-zinc-800:hover { background: #27272a !important; }
+      .manifestBtn:hover,
+      .jobSelect:hover { background: #202024 !important; }
+      .divide-zinc-200 > :not([hidden]) ~ :not([hidden]) { border-color: #27272a !important; }
+      .border-red-300 { border-color: #7f1d1d !important; }
+      .text-red-700,
+      .text-red-600 { color: #f87171 !important; }
+      .bg-red-50,
+      .hover\:bg-red-50:hover { background: #450a0a !important; }
+      body.has-mesh-progress { padding-bottom: 110px; }
+      body.has-mesh-progress #imageModal { padding-bottom: 120px; }
+      #meshProgressFooter { background: #18181b; border-top: 1px solid #3f3f46; box-shadow: 0 -8px 24px #0005; }
+      #meshProgressFill { transition: width .7s ease; background: #38bdf8; }
+      #meshProgressFooter[data-status="succeeded"] #meshProgressFill { background: #34d399; }
+      #meshProgressFooter[data-status="failed"] #meshProgressFill { background: #f87171; }
+      @media (prefers-reduced-motion: reduce) { #meshProgressFill { transition: none; } }
+    </style>
+  </head>
+  <body class="min-h-screen bg-zinc-100 text-zinc-950">
+    <div class="min-h-screen grid grid-rows-[auto_1fr]">
+      <header class="border-b border-zinc-300 bg-white">
+        <div class="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3">
+          <div class="flex items-center gap-3">
+            <div class="grid h-9 w-9 place-items-center rounded border border-zinc-300 bg-zinc-950 text-white">
+              <i data-lucide="box" class="h-5 w-5"></i>
+            </div>
+            <div>
+              <h1 class="text-lg font-semibold leading-tight">Blocky Control</h1>
+              <p class="text-xs text-zinc-500">Generate image candidates, then promote selected images to 3D</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-sm">
+            <span id="comfyStatus" class="inline-flex items-center gap-1.5 rounded border border-zinc-300 px-2 py-1">
+              <span class="h-2 w-2 rounded-full bg-zinc-400"></span> ComfyUI
+            </span>
+            <span id="hunyuanStatus" class="inline-flex items-center gap-1.5 rounded border border-zinc-300 px-2 py-1">
+              <span class="h-2 w-2 rounded-full bg-zinc-400"></span> Hunyuan
+            </span>
+            <button id="cancelAllBtn" class="inline-flex h-9 items-center gap-2 rounded border border-red-300 bg-white px-3 text-red-700 hover:bg-red-50">
+              <i data-lucide="octagon-x" class="h-4 w-4"></i>
+              Cancel & Reset
+            </button>
+            <button id="refreshBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 bg-white px-3 hover:bg-zinc-50">
+              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              Refresh
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="mx-auto grid w-full max-w-[1600px] grid-cols-12 gap-4 px-4 py-4">
+        <aside class="col-span-12 lg:col-span-3">
+          <section class="border border-zinc-300 bg-white">
+            <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+              <h2 class="text-sm font-semibold">Manifests</h2>
+              <button id="newManifestBtn" title="New manifest" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                <i data-lucide="file-plus-2" class="h-4 w-4"></i>
+              </button>
+            </div>
+            <div id="manifestList" class="max-h-[calc(100vh-220px)] overflow-auto scrollbar-thin"></div>
+          </section>
+        </aside>
+
+        <section class="col-span-12 lg:col-span-5">
+          <div class="border border-zinc-300 bg-white">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-300 px-3 py-2">
+              <div class="min-w-0">
+                <h2 id="editorTitle" class="truncate text-sm font-semibold">Select a manifest</h2>
+                <p id="editorMeta" class="text-xs text-zinc-500">No file loaded</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="manifestName" class="h-9 w-56 rounded border border-zinc-300 px-2 text-sm" placeholder="name" />
+                <button id="saveBtn" title="Save manifest" class="grid h-9 w-9 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="save" class="h-4 w-4"></i>
+                </button>
+              </div>
+            </div>
+            <div class="grid max-h-[calc(100vh-265px)] min-h-[420px] gap-3 overflow-auto bg-zinc-50 p-3 scrollbar-thin">
+              <section class="border border-zinc-300 bg-white">
+                <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                  <h3 class="text-sm font-semibold">AI Entries</h3>
+                  <button id="generateAiEntriesBtn" class="inline-flex h-8 items-center gap-2 rounded bg-zinc-950 px-3 text-xs text-white hover:bg-zinc-800">
+                    <i data-lucide="sparkles" class="h-4 w-4"></i> Generate
+                  </button>
+                </div>
+                <div class="grid gap-2 p-3">
+                  <label class="grid gap-1 text-xs text-zinc-500">AI provider
+                    <select id="aiProvider" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950">
+                      <option value="codex">Codex · ChatGPT sign-in</option>
+                      <option value="openai">OpenAI API · separate billing</option>
+                    </select>
+                  </label>
+                  <div class="flex items-center justify-between gap-2 text-xs text-zinc-500">
+                    <span id="aiConnection" role="status">Checking Codex connection...</span>
+                    <button id="checkAiConnectionBtn" class="shrink-0 underline">Check connection</button>
+                  </div>
+                  <textarea id="aiModelTypes" class="min-h-20 w-full resize-y rounded border border-zinc-300 px-2 py-2 text-sm" placeholder="prison cell walls, barred doors, security cameras"></textarea>
+                  <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <input id="aiCategory" class="h-9 rounded border border-zinc-300 px-2 text-sm" placeholder="category" value="interior" />
+                    <input id="aiEntriesPerType" type="number" min="1" max="12" class="h-9 rounded border border-zinc-300 px-2 text-sm" value="1" title="Entries per model type" />
+                    <input id="aiImageCount" type="number" min="1" max="12" class="h-9 rounded border border-zinc-300 px-2 text-sm" value="4" title="Images per entry" />
+                    <input id="aiTargetHeight" type="number" min="0.01" step="0.1" class="h-9 rounded border border-zinc-300 px-2 text-sm" value="1.0" title="Target height meters" />
+                  </div>
+                  <input id="aiStyle" class="h-9 rounded border border-zinc-300 px-2 text-sm" placeholder="style notes, constraints, theme" />
+                  <div id="aiStatus" class="min-h-4 text-xs text-zinc-500"></div>
+                </div>
+              </section>
+
+              <section class="border border-zinc-300 bg-white">
+                <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                  <h3 class="text-sm font-semibold">Model Types</h3>
+                  <button id="addEntryBtn" class="inline-flex h-8 items-center gap-2 rounded border border-zinc-300 px-3 text-xs hover:bg-zinc-50">
+                    <i data-lucide="plus" class="h-4 w-4"></i> Add
+                  </button>
+                </div>
+                <div id="entryList" class="grid gap-3 p-3"></div>
+              </section>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 border-t border-zinc-300 px-3 py-2">
+              <button data-mode="validate" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="check" class="h-4 w-4"></i> Validate
+              </button>
+              <button data-mode="dry-run" class="jobBtn inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="list-checks" class="h-4 w-4"></i> Dry Run
+              </button>
+              <button id="imagesBtn" data-mode="images" title="Requires ComfyUI already running" class="jobBtn inline-flex h-9 items-center gap-2 rounded bg-zinc-950 px-3 text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">
+                <i data-lucide="image" class="h-4 w-4"></i> Generate Images
+              </button>
+              <button id="reviewImagesBtn" title="Review generated images" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+                <i data-lucide="layout-grid" class="h-4 w-4"></i> Review Images
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="col-span-12 lg:col-span-4">
+          <div class="grid gap-4">
+            <div class="border border-zinc-300 bg-white">
+              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                <h2 class="text-sm font-semibold">Jobs</h2>
+                <button id="stopJobBtn" title="Stop selected job" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="square" class="h-4 w-4"></i>
+                </button>
+              </div>
+              <div id="jobList" class="max-h-48 overflow-auto divide-y divide-zinc-200 scrollbar-thin"></div>
+              <div id="jobSteps" class="border-t border-zinc-300 px-3 py-3"></div>
+            </div>
+
+            <div class="border border-zinc-300 bg-white">
+              <div class="flex items-center justify-between border-b border-zinc-300 px-3 py-2">
+                <h2 class="text-sm font-semibold">Log</h2>
+                <div class="flex items-center gap-2">
+                  <span id="logTitle" class="text-xs text-zinc-500">No job selected</span>
+                  <button id="copyLogBtn" title="Copy log" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                    <i data-lucide="copy" class="h-4 w-4"></i>
+                  </button>
+                </div>
+              </div>
+              <pre id="logPane" class="h-[calc(100vh-520px)] min-h-96 overflow-auto whitespace-pre-wrap bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100 scrollbar-thin"></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="imageModal" class="fixed inset-0 z-50 hidden bg-zinc-950/70 p-3 sm:p-6">
+      <div class="mx-auto grid h-full max-w-[1500px] grid-rows-[auto_1fr] overflow-hidden border border-zinc-300 bg-white">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-300 px-3 py-2">
+          <div class="min-w-0">
+            <h2 id="imageModalTitle" class="truncate text-sm font-semibold">Image Review</h2>
+            <p id="imageModalMeta" class="text-xs text-zinc-500">Select generated images to send to 3D</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="selectAllImagesBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+              <i data-lucide="check-square" class="h-4 w-4"></i> Select All
+            </button>
+            <button id="clearImageSelectionBtn" class="inline-flex h-9 items-center gap-2 rounded border border-zinc-300 px-3 hover:bg-zinc-50">
+              <i data-lucide="square" class="h-4 w-4"></i> Clear
+            </button>
+            <button id="closeImageModalBtn" title="Close" class="grid h-9 w-9 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+              <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+          </div>
+        </div>
+        <div class="grid min-h-0 grid-cols-12">
+          <div class="col-span-12 min-h-0 border-b border-zinc-300 lg:col-span-8 lg:border-b-0 lg:border-r">
+            <div id="imageGrid" class="grid max-h-[45vh] grid-cols-2 gap-2 overflow-auto p-3 scrollbar-thin sm:grid-cols-3 md:grid-cols-4 lg:max-h-full xl:grid-cols-5"></div>
+          </div>
+          <aside class="col-span-12 grid min-h-0 grid-rows-[1fr_auto] lg:col-span-4">
+            <div class="min-h-0 overflow-auto p-3 scrollbar-thin">
+              <div id="imageDetail" class="grid gap-3"></div>
+            </div>
+            <div class="border-t border-zinc-300 p-3">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div id="selectedImageCount" class="text-sm font-semibold">0 selected</div>
+                  <div class="text-xs text-zinc-500">Checked images will run through Hunyuan3D</div>
+                </div>
+                <button id="sendSelectedImagesBtn" class="inline-flex h-10 items-center gap-2 rounded bg-zinc-950 px-4 text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <i data-lucide="cuboid" class="h-4 w-4"></i> Generate 3D
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <footer id="meshProgressFooter" class="fixed inset-x-0 bottom-0 z-[60] hidden px-4 py-3" aria-label="3D generation progress">
+      <div class="mx-auto grid max-w-[1568px] gap-2">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0 text-sm"><strong id="meshProgressStage" role="status"></strong><span id="meshProgressManifest" class="ml-2 text-xs text-zinc-500"></span></div>
+          <div class="flex shrink-0 items-center gap-3 text-xs">
+            <button id="meshProgressView" class="underline">View job</button>
+            <button id="meshProgressDismiss" class="hidden underline" aria-label="Dismiss 3D progress">Dismiss</button>
+          </div>
+        </div>
+        <div id="meshProgressBar" class="h-1.5 overflow-hidden rounded bg-zinc-800" role="progressbar" aria-label="Estimated overall 3D progress" aria-valuemin="0" aria-valuemax="100">
+          <div id="meshProgressFill" class="h-full rounded" style="width:0%"></div>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-zinc-500">
+          <span id="meshProgressCount"></span>
+          <span><span id="meshProgressElapsed"></span><span class="mx-2">·</span><span id="meshProgressEta"></span></span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="/scripts/mesh_progress.js"></script>
+    <script>
+      const state = {
+        pendingMeshJob: null,
+        dismissedMeshJobs: new Set(),
+        secondsPerModel: 90,
+        timingLoaded: false,
+        lastRefresh: 0,
+        manifests: [],
+        index: [],
+        jobs: [],
+        selectedManifest: null,
+        selectedJob: null,
+        manifestEntries: [],
+        activeAssetId: null,
+        selectedImageIds: new Set(),
+        imageModalOpen: false,
+        services: { comfyui: false, hunyuan: false },
+        gpu: { total_mib: null, free_mib: null, used_mib: null }
+      };
+      const $ = (id) => document.getElementById(id);
+      const statusClass = (ok) => ok ? 'bg-emerald-500' : 'bg-zinc-400';
+      const fmtTime = (seconds) => seconds ? new Date(seconds * 1000).toLocaleTimeString() : '';
+      const manifestStem = (name) => String(name || '').replace(/\.json$/i, '');
+      const manifestFileName = (name) => {
+        const cleaned = String(name || '').trim().replace(/\.json$/i, '');
+        return cleaned ? `${cleaned}.json` : '';
+      };
+      const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
+
+      async function api(path, options = {}) {
+        const res = await fetch(path, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      }
+
+      function renderServices(services) {
+        state.services = services;
+        for (const [id, ok] of [['comfyStatus', services.comfyui], ['hunyuanStatus', services.hunyuan]]) {
+          const el = $(id);
+          el.querySelector('span').className = `h-2 w-2 rounded-full ${statusClass(ok)}`;
+        }
+        const free = state.gpu?.free_mib;
+        const used = state.gpu?.used_mib;
+        if (free !== null && free !== undefined) {
+          $('hunyuanStatus').title = `GPU free: ${free} MiB${used !== null && used !== undefined ? `, used: ${used} MiB` : ''}`;
+        }
+        renderImageJobState();
+        renderImageSelectionState();
+      }
+
+      function renderImageJobState() {
+        const hasName = Boolean(($('manifestName')?.value || state.selectedManifest || '').trim());
+        const hasEntries = state.manifestEntries.some((entry) => String(entry.id || '').trim() && String(entry.prompt || '').trim());
+        if ($('imagesBtn')) $('imagesBtn').disabled = !hasName || !hasEntries;
+      }
+
+      function currentManifest() {
+        return state.manifests.find((manifest) => manifest.name === state.selectedManifest) || null;
+      }
+
+      function currentAssets() {
+        return currentManifest()?.assets || [];
+      }
+
+      function imageUrl(asset) {
+        return `/${asset.image_path}?v=${encodeURIComponent(asset.status || '')}-${asset.image_exists ? 1 : 0}`;
+      }
+
+      function pruneSelectedImages() {
+        const validIds = new Set(currentAssets().filter((asset) => asset.image_exists).map((asset) => asset.asset_id));
+        state.selectedImageIds = new Set([...state.selectedImageIds].filter((assetId) => validIds.has(assetId)));
+      }
+
+      function blankEntry() {
+        return {
+          id: '',
+          category: '',
+          prompt: '',
+          negative_prompt: '',
+          count: 1,
+          seed: null,
+          image_size: 1024,
+          mesh_quality: 'draft',
+          target_height_m: 1.0
+        };
+      }
+
+      function defaultEntry() {
+        return {
+          id: 'new_asset_001',
+          category: 'interior',
+          prompt: 'single game asset object, pure white background, floating in void, alpha channel around object, clean product render, no floor, no shadows',
+          negative_prompt: 'text, watermark, people, clutter, floor plane, ground plane, base plate, shadow, multiple objects, cropped',
+          count: 1,
+          seed: null,
+          image_size: 1024,
+          mesh_quality: 'draft',
+          target_height_m: 1.0
+        };
+      }
+
+      function setEntries(entries) {
+        state.manifestEntries = Array.isArray(entries) ? entries.map((entry) => ({ ...defaultEntry(), ...entry })) : [];
+        renderEntries();
+      }
+
+      function updateEntry(index, key, value) {
+        const entry = state.manifestEntries[index];
+        if (!entry) return;
+        if (['count', 'image_size'].includes(key)) value = Number.parseInt(value || '0', 10);
+        if (key === 'target_height_m') value = Number.parseFloat(value || '0');
+        if (key === 'seed') value = value === '' ? null : Number.parseInt(value, 10);
+        entry[key] = value;
+      }
+
+      function collectEntries() {
+        return [...document.querySelectorAll('[data-entry-index]')].map((section) => {
+          const value = (key) => section.querySelector(`[data-field="${key}"]`)?.value ?? '';
+          return {
+            id: value('id').trim(),
+            category: value('category').trim(),
+            prompt: value('prompt').trim(),
+            negative_prompt: value('negative_prompt').trim(),
+            count: Math.max(1, Number.parseInt(value('count') || '1', 10)),
+            seed: value('seed').trim() === '' ? null : Number.parseInt(value('seed'), 10),
+            image_size: Number.parseInt(value('image_size') || '1024', 10),
+            mesh_quality: value('mesh_quality'),
+            target_height_m: Math.max(0.01, Number.parseFloat(value('target_height_m') || '1'))
+          };
+        }).filter((entry) => entry.id || entry.category || entry.prompt || entry.negative_prompt);
+      }
+
+      function renderEntries() {
+        $('entryList').innerHTML = state.manifestEntries.map((entry, index) => `
+          <section data-entry-index="${index}" class="border border-zinc-300 bg-white">
+            <div class="flex items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2">
+              <div class="min-w-0">
+                <h4 class="truncate text-sm font-semibold">${escapeHtml(entry.id || `Entry ${index + 1}`)}</h4>
+                <p class="text-xs text-zinc-500">${escapeHtml(entry.category || 'uncategorized')}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button data-duplicate-entry="${index}" title="Duplicate" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="copy-plus" class="h-4 w-4"></i>
+                </button>
+                <button data-remove-entry="${index}" title="Remove and delete generated files" class="grid h-8 w-8 place-items-center rounded border border-zinc-300 hover:bg-zinc-50">
+                  <i data-lucide="trash-2" class="h-4 w-4"></i>
+                </button>
+              </div>
+            </div>
+            <div class="grid gap-3 p-3">
+              <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <label class="grid gap-1 text-xs text-zinc-500">ID
+                  <input data-field="id" value="${escapeHtml(entry.id)}" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950" />
+                </label>
+                <label class="grid gap-1 text-xs text-zinc-500">Category
+                  <input data-field="category" value="${escapeHtml(entry.category)}" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950" />
+                </label>
+              </div>
+              <label class="grid gap-1 text-xs text-zinc-500">Prompt
+                <textarea data-field="prompt" class="min-h-24 resize-y rounded border border-zinc-300 px-2 py-2 text-sm text-zinc-950">${escapeHtml(entry.prompt)}</textarea>
+              </label>
+              <label class="grid gap-1 text-xs text-zinc-500">Negative Prompt
+                <textarea data-field="negative_prompt" class="min-h-20 resize-y rounded border border-zinc-300 px-2 py-2 text-sm text-zinc-950">${escapeHtml(entry.negative_prompt)}</textarea>
+              </label>
+              <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+                <label class="grid gap-1 text-xs text-zinc-500">Images
+                  <input data-field="count" type="number" min="1" value="${entry.count}" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950" />
+                </label>
+                <label class="grid gap-1 text-xs text-zinc-500">Seed
+                  <input data-field="seed" type="number" value="${entry.seed ?? ''}" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950" />
+                </label>
+                <label class="grid gap-1 text-xs text-zinc-500">Size
+                  <select data-field="image_size" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950">
+                    ${[512, 768, 1024].map((size) => `<option value="${size}" ${Number(entry.image_size) === size ? 'selected' : ''}>${size}</option>`).join('')}
+                  </select>
+                </label>
+                <label class="grid gap-1 text-xs text-zinc-500">Mesh
+                  <select data-field="mesh_quality" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950">
+                    ${['draft', 'standard'].map((quality) => `<option value="${quality}" ${entry.mesh_quality === quality ? 'selected' : ''}>${quality}</option>`).join('')}
+                  </select>
+                </label>
+                <label class="grid gap-1 text-xs text-zinc-500">Height M
+                  <input data-field="target_height_m" type="number" min="0.01" step="0.1" value="${entry.target_height_m}" class="h-9 rounded border border-zinc-300 px-2 text-sm text-zinc-950" />
+                </label>
+              </div>
+            </div>
+          </section>
+        `).join('');
+
+        document.querySelectorAll('[data-entry-index] [data-field]').forEach((input) => {
+          input.addEventListener('input', () => {
+            const section = input.closest('[data-entry-index]');
+            updateEntry(Number(section.dataset.entryIndex), input.dataset.field, input.value);
+            renderImageJobState();
+          });
+        });
+        document.querySelectorAll('[data-remove-entry]').forEach((btn) => {
+          btn.addEventListener('click', () => deleteEntry(Number(btn.dataset.removeEntry)));
+        });
+        document.querySelectorAll('[data-duplicate-entry]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const index = Number(btn.dataset.duplicateEntry);
+            const copy = { ...state.manifestEntries[index], id: `${state.manifestEntries[index].id}_copy` };
+            state.manifestEntries.splice(index + 1, 0, copy);
+            renderEntries();
+            renderImageJobState();
+          });
+        });
+        renderImageJobState();
+        lucide.createIcons();
+      }
+
+      function renderManifests() {
+        $('manifestList').innerHTML = state.manifests.map((m) => {
+          const active = m.name === state.selectedManifest;
+          const pct = m.asset_count ? Math.round((m.mesh_complete / m.asset_count) * 100) : 0;
+          return `
+            <div class="flex border-b border-zinc-200 ${active ? 'bg-zinc-100' : ''}">
+              <button data-manifest="${m.name}" class="manifestBtn min-w-0 flex-1 px-3 py-3 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-sm font-medium">${m.name}</span>
+                  <span class="text-xs text-zinc-500">${pct}%</span>
+                </div>
+                <div class="mt-1 grid grid-cols-4 gap-1 text-[11px] text-zinc-500">
+                  <span>${m.asset_count} assets</span>
+                  <span>${m.mesh_complete} mesh</span>
+                  <span>${m.image_complete} image</span>
+                  <span>${m.failed} fail</span>
+                </div>
+                <div class="mt-2 h-1.5 overflow-hidden rounded bg-zinc-200">
+                  <div class="h-full bg-zinc-950" style="width:${pct}%"></div>
+                </div>
+              </button>
+              <button data-delete-manifest="${m.name}" title="Delete manifest and generated files" class="grid w-10 shrink-0 place-items-center border-l border-zinc-200 text-red-600 hover:bg-red-50">
+                <i data-lucide="trash-2" class="h-4 w-4"></i>
+              </button>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.manifestBtn').forEach((btn) => btn.addEventListener('click', () => loadManifest(btn.dataset.manifest)));
+        document.querySelectorAll('[data-delete-manifest]').forEach((btn) => btn.addEventListener('click', () => deleteManifest(btn.dataset.deleteManifest)));
+        lucide.createIcons();
+      }
+
+      function renderJobs() {
+        $('jobList').innerHTML = state.jobs.map((job) => {
+          const active = job.id === state.selectedJob;
+          const assetText = Array.isArray(job.asset_ids) && job.asset_ids.length ? ` · ${job.asset_ids.length} selected` : '';
+          return `
+            <button data-job="${job.id}" class="jobSelect block w-full px-3 py-2 text-left ${active ? 'bg-zinc-100' : 'hover:bg-zinc-50'}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="truncate text-xs font-medium">${job.mode} · ${job.manifest}${assetText}</span>
+                <span class="text-[11px] text-zinc-500">${job.status}</span>
+              </div>
+              <div class="mt-1 text-[11px] text-zinc-500">${fmtTime(job.started_at)} ${job.log_path}</div>
+            </button>`;
+        }).join('') || '<div class="px-3 py-4 text-xs text-zinc-500">No jobs yet</div>';
+        document.querySelectorAll('.jobSelect').forEach((btn) => btn.addEventListener('click', () => selectJob(btn.dataset.job)));
+        renderJobSteps();
+        renderMeshProgress();
+      }
+
+      function globalMeshJob() {
+        const jobs = state.jobs.filter(job => job.mode === 'meshes');
+        return state.pendingMeshJob || jobs.find(job => ['preparing', 'running', 'stopping'].includes(job.status))
+          || (jobs[0] && !state.dismissedMeshJobs.has(jobs[0].id) ? jobs[0] : null);
+      }
+
+      function durationLabel(seconds) {
+        const rounded = Math.max(0, Math.floor(seconds));
+        if (rounded < 60) return `${rounded}s`;
+        const minutes = Math.floor(rounded / 60);
+        return minutes < 60 ? `${minutes}m ${rounded % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+      }
+
+      function renderMeshProgress() {
+        const job = globalMeshJob();
+        const footer = $('meshProgressFooter');
+        footer.classList.toggle('hidden', !job);
+        document.body.classList.toggle('has-mesh-progress', !!job);
+        if (!job) return;
+        const manifest = state.manifests.find(item => item.name === job.manifest);
+        const assets = (manifest?.assets || []).map(asset => ({
+          ...asset, updated_at: state.index.find(item => item.asset_id === asset.asset_id)?.updated_at
+        }));
+        const progress = meshProgress(job, assets, Date.now() / 1000, state.secondsPerModel);
+        const stale = !progress.terminal && state.lastRefresh && Date.now() - state.lastRefresh > 15000;
+        footer.dataset.status = job.status;
+        $('meshProgressStage').textContent = stale ? 'Reconnecting to job updates…' : progress.stage;
+        $('meshProgressManifest').textContent = job.manifest;
+        $('meshProgressCount').textContent = `${progress.completed} / ${progress.total} models ready · ${progress.percent}%${progress.terminal ? '' : ' estimated'}`;
+        $('meshProgressFill').style.width = `${progress.percent}%`;
+        $('meshProgressBar').setAttribute('aria-valuenow', progress.percent);
+        $('meshProgressBar').setAttribute('aria-valuetext', `${progress.percent}% estimated; ${progress.completed} of ${progress.total} models ready`);
+        $('meshProgressElapsed').textContent = `${durationLabel(progress.elapsed)} elapsed`;
+        $('meshProgressEta').textContent = progress.terminal ? (job.status === 'succeeded' ? 'Export complete' : 'See job log for details')
+          : stale ? 'ETA paused' : progress.remaining === null ? 'ETA updating…' : `About ${durationLabel(Math.ceil(progress.remaining / 15) * 15)} left`;
+        $('meshProgressEta').title = 'Estimate based on recent model generation times, plus startup and export time. Actual duration varies.';
+        $('meshProgressDismiss').classList.toggle('hidden', !progress.terminal);
+        $('meshProgressView').disabled = job.id === 'pending';
+      }
+
+      async function loadMeshTiming() {
+        if (state.timingLoaded) return;
+        state.timingLoaded = true;
+        const paths = state.manifests.flatMap(item => item.assets || [])
+          .filter(asset => asset.status === 'mesh_complete' && asset.mesh_exists).slice(-10)
+          .map(asset => '/' + asset.mesh_path.replace(/\.glb$/, '.json').split('/').map(encodeURIComponent).join('/'));
+        const results = await Promise.allSettled(paths.map(path => api(path)));
+        const samples = results.filter(result => result.status === 'fulfilled')
+          .map(result => result.value.mesh_info?.generation_time_seconds)
+          .filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+        if (samples.length) state.secondsPerModel = samples[Math.floor(samples.length / 2)];
+        renderMeshProgress();
+      }
+
+      function selectedJobData() {
+        return state.jobs.find((job) => job.id === state.selectedJob) || null;
+      }
+
+      function stepTone(status) {
+        if (status === 'done') return { dot: 'bg-emerald-500', icon: 'check', text: 'text-zinc-700' };
+        if (status === 'running') return { dot: 'bg-sky-500', icon: 'loader-circle', text: 'text-zinc-950' };
+        if (status === 'failed') return { dot: 'bg-red-500', icon: 'circle-alert', text: 'text-red-700' };
+        return { dot: 'bg-zinc-300', icon: 'circle', text: 'text-zinc-500' };
+      }
+
+      function renderJobSteps() {
+        const job = selectedJobData();
+        if (!job || !Array.isArray(job.steps) || !job.steps.length) {
+          $('jobSteps').innerHTML = '<div class="text-xs text-zinc-500">Select a mesh job to see service handoff steps.</div>';
+          return;
+        }
+        $('jobSteps').innerHTML = `
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Mesh Prep</h3>
+            <span class="text-[11px] text-zinc-500">${escapeHtml(job.status)}</span>
+          </div>
+          <div class="grid gap-2">
+            ${job.steps.map((step) => {
+              const tone = stepTone(step.status);
+              return `
+                <div class="grid grid-cols-[1rem_1fr] gap-2 text-xs">
+                  <span class="mt-1 h-2.5 w-2.5 rounded-full ${tone.dot}"></span>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 ${tone.text}">
+                      <i data-lucide="${tone.icon}" class="h-3.5 w-3.5 ${step.status === 'running' ? 'animate-spin' : ''}"></i>
+                      <span class="truncate font-medium">${escapeHtml(step.label)}</span>
+                    </div>
+                    <div class="mt-0.5 truncate text-[11px] text-zinc-500">${escapeHtml(step.detail || step.status)}</div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>`;
+        lucide.createIcons();
+      }
+
+      async function refresh() {
+        const data = await api('/api/state');
+        state.manifests = data.manifests;
+        state.index = data.index;
+        state.jobs = data.jobs;
+        state.lastRefresh = Date.now();
+        loadMeshTiming();
+        state.gpu = data.gpu || state.gpu;
+        if (!state.selectedManifest && state.manifests.length) state.selectedManifest = state.manifests[0].name;
+        if (!state.selectedJob && state.jobs.length) state.selectedJob = state.jobs[0].id;
+        pruneSelectedImages();
+        renderServices(data.services);
+        renderManifests();
+        renderJobs();
+        if (state.selectedJob) loadLog();
+        if (state.imageModalOpen) renderImageModal();
+        lucide.createIcons();
+      }
+
+      async function loadManifest(name) {
+        const data = await api(`/api/manifest?name=${encodeURIComponent(name)}`);
+        state.selectedManifest = data.name || name;
+        $('manifestName').value = manifestStem(data.name || name);
+        setEntries(data.entries || []);
+        $('editorTitle').textContent = data.name || name;
+        $('editorMeta').textContent = `${state.manifestEntries.length.toLocaleString()} model type sections`;
+        pruneSelectedImages();
+        const firstImage = currentAssets().find((asset) => asset.image_exists);
+        state.activeAssetId = firstImage?.asset_id || null;
+        renderManifests();
+        if (state.imageModalOpen) renderImageModal();
+      }
+
+      async function saveManifest() {
+        const name = manifestStem($('manifestName').value);
+        if (!name) throw new Error('Manifest name is required');
+        const entries = collectEntries();
+        const result = await api('/api/manifest', {
+          method: 'POST',
+          body: JSON.stringify({ name, entries })
+        });
+        state.manifestEntries = entries;
+        state.selectedManifest = result.name;
+        $('manifestName').value = manifestStem(result.name);
+        await refresh();
+        await loadManifest(result.name);
+        if (result.service_switch_error) {
+          alert(`Manifest saved, but ComfyUI could not be started: ${result.service_switch_error}`);
+        }
+      }
+
+      async function deleteEntry(index) {
+        if (!state.selectedManifest || manifestFileName($('manifestName').value) !== state.selectedManifest) {
+          state.manifestEntries.splice(index, 1);
+          renderEntries();
+          renderImageJobState();
+          return;
+        }
+        const entry = state.manifestEntries[index];
+        const confirmed = confirm(`Remove ${entry?.id || 'this model type'} and delete its generated images, meshes, and in-game assets?`);
+        if (!confirmed) return;
+        const result = await api('/api/manifest/item/delete', {
+          method: 'POST',
+          body: JSON.stringify({ name: state.selectedManifest, index, cleanup_assets: true })
+        });
+        setEntries(result.entries || []);
+        state.selectedImageIds.clear();
+        await refresh();
+        await loadManifest(state.selectedManifest);
+      }
+
+      async function deleteManifest(name) {
+        const confirmed = confirm(`Delete ${name} from manifest/ and remove its generated files?`);
+        if (!confirmed) return;
+        await api(`/api/manifest?name=${encodeURIComponent(name)}&cleanup=1`, { method: 'DELETE' });
+        if (state.selectedManifest === name) {
+          state.selectedManifest = null;
+          state.manifestEntries = [];
+          $('manifestName').value = '';
+          $('editorTitle').textContent = 'Select a manifest';
+          $('editorMeta').textContent = 'No file loaded';
+          $('entryList').innerHTML = '';
+          state.selectedImageIds.clear();
+        }
+        await refresh();
+        if (state.selectedManifest) await loadManifest(state.selectedManifest);
+      }
+
+      async function checkAiConnection() {
+        if ($('aiProvider').value === 'openai') {
+          $('aiConnection').textContent = 'Uses OPENAI_API_KEY from .env with separate API billing.';
+          return;
+        }
+        $('aiConnection').textContent = 'Checking Codex connection...';
+        try {
+          const status = await api('/api/ai/status');
+          if ($('aiProvider').value === 'codex') $('aiConnection').textContent = status.message;
+        } catch (error) {
+          if ($('aiProvider').value === 'codex') $('aiConnection').textContent = error.message;
+        }
+      }
+
+      async function generateAiEntries() {
+        const btn = $('generateAiEntriesBtn');
+        const provider = $('aiProvider').value;
+        btn.disabled = true;
+        $('aiProvider').disabled = true;
+        $('aiStatus').textContent = provider === 'codex' ? 'Generating with Codex... This may take up to 3 minutes.' : 'Generating entries...';
+        try {
+          const data = await api('/api/ai/manifest-entries', {
+            method: 'POST',
+            body: JSON.stringify({
+              provider,
+              model_types: $('aiModelTypes').value,
+              category: $('aiCategory').value,
+              style: $('aiStyle').value,
+              entries_per_type: Number.parseInt($('aiEntriesPerType').value || '1', 10),
+              image_count: Number.parseInt($('aiImageCount').value || '4', 10),
+              target_height_m: Number.parseFloat($('aiTargetHeight').value || '1'),
+              image_size: 1024,
+              mesh_quality: 'draft'
+            })
+          });
+          state.manifestEntries = [...collectEntries(), ...data.entries];
+          renderEntries();
+          $('editorMeta').textContent = `${state.manifestEntries.length.toLocaleString()} model type sections`;
+          $('aiStatus').textContent = `Added ${data.entries.length} AI-generated section${data.entries.length === 1 ? '' : 's'}.`;
+        } catch (error) {
+          $('aiStatus').textContent = error.message;
+        } finally {
+          btn.disabled = false;
+          $('aiProvider').disabled = false;
+        }
+      }
+
+      async function startJob(mode, assetIds = []) {
+        if (['images', 'validate', 'dry-run'].includes(mode)) {
+          try {
+            await saveManifest();
+          } catch (error) {
+            alert(error.message);
+            return;
+          }
+          if (mode === 'images' && !state.services.comfyui) {
+            alert('ComfyUI is not reachable yet. Start ComfyUI, then click Generate Images again.');
+            return;
+          }
+        }
+        if (mode === 'meshes' && !assetIds.length) {
+          alert('Select at least one generated image first.');
+          return;
+        }
+        const manifest = manifestFileName($('manifestName').value) || state.selectedManifest;
+        const meshButton = mode === 'meshes' ? $('sendSelectedImagesBtn') : null;
+        const previousMeshButton = meshButton?.innerHTML;
+        if (meshButton) {
+          state.pendingMeshJob = {id: 'pending', mode: 'meshes', manifest, asset_ids: assetIds, status: 'preparing', started_at: Date.now() / 1000, steps: []};
+          renderMeshProgress();
+          meshButton.disabled = true;
+          meshButton.innerHTML = '<i data-lucide="loader-circle" class="h-4 w-4"></i> Starting 3D';
+          lucide.createIcons();
+        }
+        try {
+          const job = await api('/api/jobs', {
+            method: 'POST',
+            body: JSON.stringify({ manifest, mode, asset_ids: assetIds })
+          });
+          state.selectedJob = job.id;
+          if (mode === 'meshes') {
+            state.pendingMeshJob = null;
+            state.jobs.unshift(job);
+            renderMeshProgress();
+          }
+          await refresh();
+          await loadLog();
+        } catch (error) {
+          if (mode === 'meshes') {
+            state.pendingMeshJob = null;
+            renderMeshProgress();
+          }
+          alert(error.message);
+        } finally {
+          if (meshButton && previousMeshButton) {
+            meshButton.innerHTML = previousMeshButton;
+            lucide.createIcons();
+            renderImageSelectionState();
+          }
+        }
+      }
+
+      function openImageModal() {
+        state.imageModalOpen = true;
+        const firstImage = currentAssets().find((asset) => asset.image_exists);
+        state.activeAssetId ||= firstImage?.asset_id || null;
+        $('imageModal').classList.remove('hidden');
+        renderImageModal();
+      }
+
+      function closeImageModal() {
+        state.imageModalOpen = false;
+        $('imageModal').classList.add('hidden');
+      }
+
+      function renderImageSelectionState() {
+        const selectedCount = state.selectedImageIds.size;
+        const countEl = $('selectedImageCount');
+        const sendBtn = $('sendSelectedImagesBtn');
+        if (countEl) countEl.textContent = `${selectedCount} selected`;
+        if (sendBtn) {
+          sendBtn.disabled = selectedCount === 0;
+          sendBtn.title = 'Stops ComfyUI, waits for VRAM, starts Hunyuan3D, then generates selected 3D models';
+        }
+      }
+
+      function renderImageModal() {
+        const manifest = currentManifest();
+        const assets = currentAssets();
+        const imageAssets = assets.filter((asset) => asset.image_exists);
+        const activeAsset = assets.find((asset) => asset.asset_id === state.activeAssetId) || imageAssets[0] || null;
+        if (activeAsset) state.activeAssetId = activeAsset.asset_id;
+
+        $('imageModalTitle').textContent = manifest ? `${manifest.name} Images` : 'Image Review';
+        $('imageModalMeta').textContent = `${imageAssets.length} generated of ${assets.length} candidates`;
+
+        $('imageGrid').innerHTML = imageAssets.map((asset) => {
+          const active = asset.asset_id === state.activeAssetId;
+          const checked = state.selectedImageIds.has(asset.asset_id);
+          return `
+            <div class="group border ${active ? 'border-zinc-950' : 'border-zinc-300'} bg-white">
+              <button data-asset="${escapeHtml(asset.asset_id)}" class="imageTile block w-full text-left">
+                <div class="aspect-square bg-zinc-100">
+                  <img src="${imageUrl(asset)}" alt="${escapeHtml(asset.asset_id)}" class="h-full w-full object-contain" loading="lazy" />
+                </div>
+                <div class="flex items-center justify-between gap-2 border-t border-zinc-200 px-2 py-1.5">
+                  <span class="truncate text-xs font-medium">${escapeHtml(asset.asset_id)}</span>
+                  <span class="text-[11px] text-zinc-500">${asset.mesh_exists ? '3D' : asset.status}</span>
+                </div>
+              </button>
+              <label class="flex h-9 items-center gap-2 border-t border-zinc-200 px-2 text-xs hover:bg-zinc-50">
+                <input type="checkbox" data-check="${escapeHtml(asset.asset_id)}" class="imageCheck h-4 w-4 rounded border-zinc-300" ${checked ? 'checked' : ''} />
+                Send to 3D
+              </label>
+            </div>`;
+        }).join('') || '<div class="col-span-full grid min-h-64 place-items-center border border-dashed border-zinc-300 text-sm text-zinc-500">No generated images yet</div>';
+
+        renderImageDetail(activeAsset);
+        renderImageSelectionState();
+        document.querySelectorAll('.imageTile').forEach((btn) => btn.addEventListener('click', () => {
+          state.activeAssetId = btn.dataset.asset;
+          renderImageModal();
+        }));
+        document.querySelectorAll('.imageCheck').forEach((box) => box.addEventListener('change', () => {
+          if (box.checked) state.selectedImageIds.add(box.dataset.check);
+          else state.selectedImageIds.delete(box.dataset.check);
+          renderImageSelectionState();
+          renderImageDetail(currentAssets().find((asset) => asset.asset_id === state.activeAssetId) || null);
+        }));
+        lucide.createIcons();
+      }
+
+      function renderImageDetail(asset) {
+        if (!asset) {
+          $('imageDetail').innerHTML = '<div class="grid min-h-64 place-items-center border border-dashed border-zinc-300 text-sm text-zinc-500">Generate images to review them here</div>';
+          return;
+        }
+        const checked = state.selectedImageIds.has(asset.asset_id);
+        $('imageDetail').innerHTML = `
+          <div class="bg-zinc-100">
+            <img src="${imageUrl(asset)}" alt="${escapeHtml(asset.asset_id)}" class="max-h-[58vh] w-full object-contain" />
+          </div>
+          <div class="grid gap-2 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate font-semibold">${escapeHtml(asset.asset_id)}</div>
+                <div class="text-xs text-zinc-500">${escapeHtml(asset.category)} / ${escapeHtml(asset.status)}</div>
+              </div>
+              <span class="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs">${asset.mesh_exists ? '3D ready' : 'Image only'}</span>
+            </div>
+            <label class="flex items-center gap-2 border border-zinc-300 px-3 py-2 hover:bg-zinc-50">
+              <input id="detailImageCheck" type="checkbox" class="h-4 w-4 rounded border-zinc-300" ${checked ? 'checked' : ''} />
+              Include this image in the next 3D job
+            </label>
+            <div class="grid gap-1 text-xs text-zinc-500">
+              <div class="truncate">Image: ${escapeHtml(asset.image_path)}</div>
+              <div class="truncate">Mesh: ${escapeHtml(asset.mesh_path)}</div>
+              ${asset.error ? `<div class="text-red-600">Error: ${escapeHtml(asset.error)}</div>` : ''}
+            </div>
+          </div>`;
+        $('detailImageCheck').addEventListener('change', (event) => {
+          if (event.target.checked) state.selectedImageIds.add(asset.asset_id);
+          else state.selectedImageIds.delete(asset.asset_id);
+          renderImageModal();
+        });
+      }
+
+      async function selectJob(id) {
+        state.selectedJob = id;
+        renderJobs();
+        await loadLog();
+      }
+
+      async function loadLog() {
+        if (!state.selectedJob) return;
+        const data = await api(`/api/jobs/${state.selectedJob}/log`);
+        $('logTitle').textContent = state.selectedJob;
+        $('logPane').textContent = data.log || '';
+        $('logPane').scrollTop = $('logPane').scrollHeight;
+      }
+
+      async function stopJob() {
+        if (!state.selectedJob) return;
+        await api(`/api/jobs/${state.selectedJob}/stop`, { method: 'POST', body: '{}' });
+        await refresh();
+      }
+
+      async function cancelAll() {
+        const confirmed = confirm('Cancel all running generation and stop ComfyUI/Hunyuan worker processes?');
+        if (!confirmed) return;
+        const btn = $('cancelAllBtn');
+        btn.disabled = true;
+        try {
+          const result = await api('/api/cancel', { method: 'POST', body: '{}' });
+          const parts = [
+            `${result.cancelled_jobs.length} UI job${result.cancelled_jobs.length === 1 ? '' : 's'}`,
+            `${result.killed_patterns.length} process pattern${result.killed_patterns.length === 1 ? '' : 's'}`,
+            `${result.force_killed_patterns.length} forced pattern${result.force_killed_patterns.length === 1 ? '' : 's'}`,
+            `${result.killed_ports.length} port${result.killed_ports.length === 1 ? '' : 's'}`,
+            `${result.force_killed_ports.length} forced port${result.force_killed_ports.length === 1 ? '' : 's'}`
+          ];
+          alert(`Reset ${parts.join(', ')}. Blocky UI is still running; ComfyUI/Hunyuan will restart when needed.`);
+          await refresh();
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function copyLog() {
+        const text = $('logPane').textContent || '';
+        if (!text) return;
+        await navigator.clipboard.writeText(text);
+        const btn = $('copyLogBtn');
+        btn.innerHTML = '<i data-lucide="check" class="h-4 w-4"></i>';
+        lucide.createIcons();
+        setTimeout(() => {
+          btn.innerHTML = '<i data-lucide="copy" class="h-4 w-4"></i>';
+          lucide.createIcons();
+        }, 1200);
+      }
+
+      $('refreshBtn').addEventListener('click', refresh);
+      $('cancelAllBtn').addEventListener('click', cancelAll);
+      $('manifestName').addEventListener('input', () => {
+        const stem = manifestStem($('manifestName').value);
+        if ($('manifestName').value !== stem) $('manifestName').value = stem;
+        renderImageJobState();
+      });
+      $('saveBtn').addEventListener('click', saveManifest);
+      $('addEntryBtn').addEventListener('click', () => {
+        state.manifestEntries = [...collectEntries(), blankEntry()];
+        renderEntries();
+      });
+      $('generateAiEntriesBtn').addEventListener('click', generateAiEntries);
+      $('meshProgressView').addEventListener('click', () => {
+        const job = globalMeshJob();
+        if (!job || job.id === 'pending') return;
+        closeImageModal();
+        selectJob(job.id);
+        $('jobList').scrollIntoView({behavior: 'smooth', block: 'center'});
+      });
+      $('meshProgressDismiss').addEventListener('click', () => {
+        const job = globalMeshJob();
+        if (job) state.dismissedMeshJobs.add(job.id);
+        renderMeshProgress();
+      });
+      $('aiProvider').addEventListener('change', checkAiConnection);
+      $('checkAiConnectionBtn').addEventListener('click', checkAiConnection);
+      checkAiConnection();
+      $('stopJobBtn').addEventListener('click', stopJob);
+      $('copyLogBtn').addEventListener('click', copyLog);
+      $('reviewImagesBtn').addEventListener('click', openImageModal);
+      $('closeImageModalBtn').addEventListener('click', closeImageModal);
+      $('imageModal').addEventListener('click', (event) => {
+        if (event.target === $('imageModal')) closeImageModal();
+      });
+      $('selectAllImagesBtn').addEventListener('click', () => {
+        currentAssets().filter((asset) => asset.image_exists).forEach((asset) => state.selectedImageIds.add(asset.asset_id));
+        renderImageModal();
+      });
+      $('clearImageSelectionBtn').addEventListener('click', () => {
+        state.selectedImageIds.clear();
+        renderImageModal();
+      });
+      $('sendSelectedImagesBtn').addEventListener('click', async () => {
+        await startJob('meshes', [...state.selectedImageIds]);
+      });
+      $('newManifestBtn').addEventListener('click', () => {
+        state.selectedManifest = null;
+        $('manifestName').value = `test_${Date.now()}`;
+        setEntries([]);
+        $('editorTitle').textContent = 'New manifest';
+        $('editorMeta').textContent = 'Unsaved';
+      });
+      document.querySelectorAll('.jobBtn').forEach((btn) => btn.addEventListener('click', () => startJob(btn.dataset.mode)));
+
+      refresh().then(() => state.selectedManifest && loadManifest(state.selectedManifest));
+      setInterval(() => refresh().catch(() => renderMeshProgress()), 4000);
+      setInterval(renderMeshProgress, 1000);
+    </script>
+  </body>
+</html>
